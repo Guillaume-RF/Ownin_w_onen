@@ -157,3 +157,21 @@ java.lang.Exception: The project description file (.project) for 'FreeRTOS_Testi
 	at org.eclipse.ui.actions.OpenResourceAction$1.runInWorkspace(OpenResourceAction.java:279)
 	at org.eclipse.core.internal.resources.InternalWorkspaceJob.run(InternalWorkspaceJob.java:42)
 	at org.eclipse.core.internal.jobs.Worker.run(Worker.java:63)
+!SESSION 2022-01-21 16:23:32.256 -----------------------------------------------
+eclipse.buildId=Version 1.7.0
+java.version=11.0.10
+java.vendor=AdoptOpenJDK
+BootLoader constants: OS=win32, ARCH=x86_64, WS=win32, NL=en_US
+Command-line arguments:  -os win32 -ws win32 -arch x86_64
+
+!ENTRY com.st.stm32cube.ide.mcu.informationcenter 4 4 2022-01-21 16:23:37.028
+!MESSAGE CubeMX plugin appears to be active, Log4j initialization might be too late.
+
+!ENTRY com.st.stm32cube.ide.mcu.informationcenter 1 1 2022-01-21 16:23:37.075
+!MESSAGE Log4j initialized with config file C:\Users\Guill\Documents\Ownin_w_onen\Main Workspace\.metadata\.log4j.xml
+
+!ENTRY com.st.stm32cube.ide.mcu.ide 1 1 2022-01-21 16:23:44.389
+!MESSAGE Started RMI Server, listening on port 41337
+
+!ENTRY org.eclipse.cdt.core 1 0 2022-01-21 16:25:18.858
+!MESSAGE Indexed 'testestes' (21 sources, 81 headers) in 1.48 sec: 4,021 declarations; 20,942 references; 0 unresolved inclusions; 1 syntax errors; 2 unresolved names (0.008%)
