@@ -35,5 +35,5 @@
 *.metadata
 *.location
 *.mxproject
-*.Debug
-*.prefs
+Debug/
+.settings/
