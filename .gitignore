@@ -32,8 +32,10 @@
 *.app
 
 # STM32 stuff
-*.metadata
+*.metadata/
 *.location
 *.mxproject
-Debug/
+*.launch
 .settings/
+Debug/
+Release/
