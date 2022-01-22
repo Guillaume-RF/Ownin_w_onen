@@ -33,3 +33,4 @@
 
 # STM32 stuff
 *.metadata
+*.location
