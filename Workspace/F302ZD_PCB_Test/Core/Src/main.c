@@ -20,6 +20,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
+#include <stdio.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -444,7 +445,7 @@ void StartadcSamplingTask(void *argument)
   {
 	raw = HAL_ADC_GetValue(&hadc2);
 	sprintf(formatted, "%hu", raw);
-	Send_Debug(formmatted, 5);
+	Send_Debug(formatted, 5);
     osDelay(50);
   }
   /* USER CODE END StartadcSamplingTask */
