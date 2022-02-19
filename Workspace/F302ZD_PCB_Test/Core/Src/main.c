@@ -116,7 +116,7 @@ int main(void)
   MX_CAN_Init();
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
-
+//  HAL_GPIO_WritePin(Enable_GPIO_Port, Enable_Pin, GPIO_PIN_RESET);
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -435,16 +435,19 @@ void StartBlinkyLEDTask(void *argument)
 void StartadcSamplingTask(void *argument)
 {
   /* USER CODE BEGIN StartadcSamplingTask */
-  HAL_GPIO_WritePin(Enable_GPIO_Port, Enable_Pin, GPIO_PIN_SET);
+  //HAL_GPIO_WritePin(Enable_GPIO_Port, Enable_Pin, GPIO_PIN_SET);
+  //HAL_GPIO_WritePin(Enable_GPIO_Port, Enable_Pin, GPIO_PIN_RESET);
   HAL_ADC_Start(&hadc2);
   HAL_ADC_PollForConversion(&hadc2, HAL_MAX_DELAY);
   uint16_t raw;
   char formatted[6];
+//  char test[2] = "69";
   /* Infinite loop */
   for(;;)
   {
 	raw = HAL_ADC_GetValue(&hadc2);
 	sprintf(formatted, "%hu", raw);
+//	Send_Debug(test, 2);
 	Send_Debug(formatted, 5);
     osDelay(50);
   }
