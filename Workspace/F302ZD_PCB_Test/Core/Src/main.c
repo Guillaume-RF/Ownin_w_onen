@@ -20,11 +20,10 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
-#include <stdio.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -59,7 +58,7 @@ const osThreadAttr_t BlinkyLEDTask_attributes = {
 osThreadId_t adcSamplingTaskHandle;
 const osThreadAttr_t adcSamplingTask_attributes = {
   .name = "adcSamplingTask",
-  .stack_size = 128 * 4,
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* USER CODE BEGIN PV */
@@ -81,7 +80,14 @@ void StartadcSamplingTask(void *argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+int _write(int32_t file, uint8_t *ptr, int32_t len)
+{
+	/* Implement your write code here, this is used by puts and printf for example */
+	int i=0;
+	for(i=0 ; i<len ; i++)
+	ITM_SendChar((*ptr++));
+	return len;
+}
 /* USER CODE END 0 */
 
 /**
@@ -184,10 +190,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL2;
-  RCC_OscInitStruct.PLL.PREDIV = RCC_PREDIV_DIV1;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -205,8 +208,7 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC12|RCC_PERIPHCLK_TIM34;
-  PeriphClkInit.Adc12ClockSelection = RCC_ADC12PLLCLK_DIV1;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_TIM34;
   PeriphClkInit.Tim34ClockSelection = RCC_TIM34CLK_HCLK;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
@@ -234,7 +236,7 @@ static void MX_ADC2_Init(void)
   /** Common config
   */
   hadc2.Instance = ADC2;
-  hadc2.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
+  hadc2.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV1;
   hadc2.Init.Resolution = ADC_RESOLUTION_12B;
   hadc2.Init.ScanConvMode = ADC_SCAN_DISABLE;
   hadc2.Init.ContinuousConvMode = DISABLE;
@@ -370,13 +372,13 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, Enable_Pin|S0_Pin|S1_Pin|S2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, Mux_EN_Pin|S0_Pin|S1_Pin|S2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOD, GPIO_4_Pin|GPIO_3_Pin|GPIO_2_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : Enable_Pin S0_Pin S1_Pin S2_Pin */
-  GPIO_InitStruct.Pin = Enable_Pin|S0_Pin|S1_Pin|S2_Pin;
+  /*Configure GPIO pins : Mux_EN_Pin S0_Pin S1_Pin S2_Pin */
+  GPIO_InitStruct.Pin = Mux_EN_Pin|S0_Pin|S1_Pin|S2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -400,6 +402,17 @@ void Send_Debug(char *message, size_t len)
 	}
 	ITM_SendChar('\n');
 }
+
+void SetMuxSelect(uint8_t selectBits)
+{
+	uint8_t s0 = selectBits & 0x01;
+	uint8_t s1 = selectBits & 0x02;
+	uint8_t s2 = selectBits & 0x04;
+
+	HAL_GPIO_WritePin(S0_GPIO_Port, S0_Pin, s0);
+	HAL_GPIO_WritePin(S1_GPIO_Port, S1_Pin, s1);
+	HAL_GPIO_WritePin(S2_GPIO_Port, S2_Pin, s2);
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartBlinkyLEDTask */
@@ -415,19 +428,15 @@ void StartBlinkyLEDTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
-	HAL_GPIO_TogglePin(S0_GPIO_Port, S0_Pin);
-	osDelay(500);
-	HAL_GPIO_TogglePin(S1_GPIO_Port, S1_Pin);
-	osDelay(500);
-	HAL_GPIO_TogglePin(S2_GPIO_Port, S2_Pin);
-    osDelay(500);
+  	osDelay(5000);
   }
   /* USER CODE END 5 */
 }
 
 /* USER CODE BEGIN Header_StartadcSamplingTask */
 /**
-* @brief Function implementing the adcSamplingTask thread.
+* @brief Starts the ADC sampling task. Samples all 8 mux lines as
+* fast as possible every 50ms and reports values every 1s.
 * @param argument: Not used
 * @retval None
 */
@@ -435,18 +444,47 @@ void StartBlinkyLEDTask(void *argument)
 void StartadcSamplingTask(void *argument)
 {
   /* USER CODE BEGIN StartadcSamplingTask */
-  HAL_GPIO_WritePin(Enable_GPIO_Port, Enable_Pin, GPIO_PIN_SET);
-  HAL_ADC_Start(&hadc2);
-  HAL_ADC_PollForConversion(&hadc2, HAL_MAX_DELAY);
-  uint16_t raw;
-  char formatted[6];
+  HAL_GPIO_WritePin(Mux_EN_GPIO_Port, Mux_EN_Pin, GPIO_PIN_RESET);
+
+  int loopCounter = 0;
   /* Infinite loop */
   for(;;)
   {
-	raw = HAL_ADC_GetValue(&hadc2);
-	sprintf(formatted, "%hu", raw);
-	Send_Debug(formatted, 5);
-    osDelay(50);
+  	uint16_t raws[8] = {0};
+  	uint8_t muxSelect = 0;
+  	while (muxSelect < 8)
+  	{
+  		SetMuxSelect(muxSelect);
+  		HAL_ADC_Start(&hadc2);
+  		if (HAL_ADC_PollForConversion(&hadc2, 1) == HAL_OK)
+  		{
+				raws[muxSelect] = HAL_ADC_GetValue(&hadc2);
+				muxSelect++;
+				HAL_ADC_Stop(&hadc2);
+  		}
+  		else
+  		{
+  			printf("oops.");
+  		}
+  	}
+
+  	if (loopCounter % 20 == 0)
+  	{
+  		loopCounter = 0;
+  		double voltage;
+  		char msg[512] = {'\0'};
+			for (int i = 0; i < 8; i++)
+			{
+				char buffer[32] = {'\0'};
+				voltage = (double)raws[i] / 4098 * 3.3;
+				snprintf(buffer, sizeof(buffer), "Pin %d: %hu\t%1.4f\n\0", i, raws[i], voltage);
+				strncat(msg, buffer, strlen(buffer));
+			}
+			printf(msg);
+  	}
+
+  	loopCounter++;
+  	osDelay(50);
   }
   /* USER CODE END StartadcSamplingTask */
 }

@@ -60,10 +60,10 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define ADC2_MuxData_Pin GPIO_PIN_6
-#define ADC2_MuxData_GPIO_Port GPIOA
-#define Enable_Pin GPIO_PIN_7
-#define Enable_GPIO_Port GPIOA
+#define MuxData_Pin GPIO_PIN_6
+#define MuxData_GPIO_Port GPIOA
+#define Mux_EN_Pin GPIO_PIN_7
+#define Mux_EN_GPIO_Port GPIOA
 #define GPIO_4_Pin GPIO_PIN_9
 #define GPIO_4_GPIO_Port GPIOD
 #define GPIO_3_Pin GPIO_PIN_10

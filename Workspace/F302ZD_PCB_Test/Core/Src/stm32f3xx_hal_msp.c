@@ -102,10 +102,10 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* hadc)
     /**ADC2 GPIO Configuration
     PA6     ------> ADC2_IN3
     */
-    GPIO_InitStruct.Pin = ADC2_MuxData_Pin;
+    GPIO_InitStruct.Pin = MuxData_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(ADC2_MuxData_GPIO_Port, &GPIO_InitStruct);
+    HAL_GPIO_Init(MuxData_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN ADC2_MspInit 1 */
 
@@ -133,7 +133,7 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* hadc)
     /**ADC2 GPIO Configuration
     PA6     ------> ADC2_IN3
     */
-    HAL_GPIO_DeInit(ADC2_MuxData_GPIO_Port, ADC2_MuxData_Pin);
+    HAL_GPIO_DeInit(MuxData_GPIO_Port, MuxData_Pin);
 
   /* USER CODE BEGIN ADC2_MspDeInit 1 */
 
