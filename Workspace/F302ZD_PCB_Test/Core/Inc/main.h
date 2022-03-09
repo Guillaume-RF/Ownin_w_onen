@@ -64,12 +64,12 @@ void Error_Handler(void);
 #define MuxData_GPIO_Port GPIOA
 #define Mux_EN_Pin GPIO_PIN_7
 #define Mux_EN_GPIO_Port GPIOA
-#define GPIO_4_Pin GPIO_PIN_9
-#define GPIO_4_GPIO_Port GPIOD
-#define GPIO_3_Pin GPIO_PIN_10
-#define GPIO_3_GPIO_Port GPIOD
-#define GPIO_2_Pin GPIO_PIN_11
+#define GPIO_1_Pin GPIO_PIN_9
+#define GPIO_1_GPIO_Port GPIOD
+#define GPIO_2_Pin GPIO_PIN_10
 #define GPIO_2_GPIO_Port GPIOD
+#define GPIO_3_Pin GPIO_PIN_11
+#define GPIO_3_GPIO_Port GPIOD
 #define TIM4_PWM_GEN_Pin GPIO_PIN_12
 #define TIM4_PWM_GEN_GPIO_Port GPIOD
 #define S0_Pin GPIO_PIN_8

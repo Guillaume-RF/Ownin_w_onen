@@ -24,6 +24,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include <string.h>
+#include <math.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,10 +49,10 @@ CAN_HandleTypeDef hcan;
 
 TIM_HandleTypeDef htim4;
 
-/* Definitions for BlinkyLEDTask */
-osThreadId_t BlinkyLEDTaskHandle;
-const osThreadAttr_t BlinkyLEDTask_attributes = {
-  .name = "BlinkyLEDTask",
+/* Definitions for PWM_DCTask */
+osThreadId_t PWM_DCTaskHandle;
+const osThreadAttr_t PWM_DCTask_attributes = {
+  .name = "PWM_DCTask",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
@@ -62,7 +64,7 @@ const osThreadAttr_t adcSamplingTask_attributes = {
   .priority = (osPriority_t) osPriorityLow,
 };
 /* USER CODE BEGIN PV */
-
+float TIM4_DutyCycle = 0.5;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -71,7 +73,7 @@ static void MX_GPIO_Init(void);
 static void MX_ADC2_Init(void);
 static void MX_CAN_Init(void);
 static void MX_TIM4_Init(void);
-void StartBlinkyLEDTask(void *argument);
+void StartPWMTask(void *argument);
 void StartadcSamplingTask(void *argument);
 
 /* USER CODE BEGIN PFP */
@@ -122,7 +124,8 @@ int main(void)
   MX_CAN_Init();
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
-
+  HAL_ADCEx_Calibration_Start(&hadc2, ADC_SINGLE_ENDED);
+  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -145,8 +148,8 @@ int main(void)
   /* USER CODE END RTOS_QUEUES */
 
   /* Create the thread(s) */
-  /* creation of BlinkyLEDTask */
-  BlinkyLEDTaskHandle = osThreadNew(StartBlinkyLEDTask, NULL, &BlinkyLEDTask_attributes);
+  /* creation of PWM_DCTask */
+  PWM_DCTaskHandle = osThreadNew(StartPWMTask, NULL, &PWM_DCTask_attributes);
 
   /* creation of adcSamplingTask */
   adcSamplingTaskHandle = osThreadNew(StartadcSamplingTask, NULL, &adcSamplingTask_attributes);
@@ -190,7 +193,10 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL2;
+  RCC_OscInitStruct.PLL.PREDIV = RCC_PREDIV_DIV1;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -208,7 +214,8 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_TIM34;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC12|RCC_PERIPHCLK_TIM34;
+  PeriphClkInit.Adc12ClockSelection = RCC_ADC12PLLCLK_DIV1;
   PeriphClkInit.Tim34ClockSelection = RCC_TIM34CLK_HCLK;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
@@ -236,7 +243,7 @@ static void MX_ADC2_Init(void)
   /** Common config
   */
   hadc2.Instance = ADC2;
-  hadc2.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV1;
+  hadc2.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
   hadc2.Init.Resolution = ADC_RESOLUTION_12B;
   hadc2.Init.ScanConvMode = ADC_SCAN_DISABLE;
   hadc2.Init.ContinuousConvMode = DISABLE;
@@ -320,6 +327,7 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 0 */
 
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
   TIM_OC_InitTypeDef sConfigOC = {0};
 
@@ -327,11 +335,20 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 0;
-  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 65535;
+  htim4.Init.Prescaler = 7;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_DOWN;
+  htim4.Init.Period = 999;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
   if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
   {
     Error_Handler();
@@ -343,7 +360,7 @@ static void MX_TIM4_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
+  sConfigOC.Pulse = 500;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
@@ -375,7 +392,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOA, Mux_EN_Pin|S0_Pin|S1_Pin|S2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, GPIO_4_Pin|GPIO_3_Pin|GPIO_2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOD, GPIO_1_Pin|GPIO_2_Pin|GPIO_3_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : Mux_EN_Pin S0_Pin S1_Pin S2_Pin */
   GPIO_InitStruct.Pin = Mux_EN_Pin|S0_Pin|S1_Pin|S2_Pin;
@@ -384,8 +401,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : GPIO_4_Pin GPIO_3_Pin GPIO_2_Pin */
-  GPIO_InitStruct.Pin = GPIO_4_Pin|GPIO_3_Pin|GPIO_2_Pin;
+  /*Configure GPIO pins : GPIO_1_Pin GPIO_2_Pin GPIO_3_Pin */
+  GPIO_InitStruct.Pin = GPIO_1_Pin|GPIO_2_Pin|GPIO_3_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -405,6 +422,7 @@ void Send_Debug(char *message, size_t len)
 
 void SetMuxSelect(uint8_t selectBits)
 {
+	HAL_GPIO_WritePin(Mux_EN_GPIO_Port, Mux_EN_Pin, GPIO_PIN_SET);
 	uint8_t s0 = selectBits & 0x01;
 	uint8_t s1 = selectBits & 0x02;
 	uint8_t s2 = selectBits & 0x04;
@@ -412,31 +430,66 @@ void SetMuxSelect(uint8_t selectBits)
 	HAL_GPIO_WritePin(S0_GPIO_Port, S0_Pin, s0);
 	HAL_GPIO_WritePin(S1_GPIO_Port, S1_Pin, s1);
 	HAL_GPIO_WritePin(S2_GPIO_Port, S2_Pin, s2);
+	HAL_GPIO_WritePin(Mux_EN_GPIO_Port, Mux_EN_Pin, GPIO_PIN_RESET);
+}
+
+void SetTIMPWMFrequency(TIM_HandleTypeDef *htim, uint32_t channel, uint16_t frequency)
+{
+	uint32_t clk = HAL_RCC_GetPCLK1Freq();
+	uint16_t psc = __HAL_TIM_GET_ICPRESCALER(htim, channel) - 1;
+	uint16_t new_arr = (clk / ((psc + 1) * frequency)) - 1;
+	uint16_t new_compare = (uint16_t)(TIM4_DutyCycle * new_arr);
+
+	__HAL_TIM_SET_AUTORELOAD(htim, new_arr);
+	__HAL_TIM_SET_COMPARE(htim, TIM_CHANNEL_1, new_compare);
+}
+
+void SetTIMPWMDutyCycle(TIM_HandleTypeDef *htim, uint32_t channel, float dutyCycle)
+{
+	uint16_t new_compare = __HAL_TIM_GET_AUTORELOAD(htim) * dutyCycle;
+	__HAL_TIM_SET_COMPARE(htim, channel, new_compare);
+	TIM4_DutyCycle = dutyCycle;
 }
 /* USER CODE END 4 */
 
-/* USER CODE BEGIN Header_StartBlinkyLEDTask */
-/**
-  * @brief  Function implementing the BlinkyLEDTask thread.
+/* USER CODE BEGIN Header_StartPWMTask */
+/**Modulates the frequency and duty cycle of the TIM4 PWM.
+  * @brief  Function implementing the PWM_DCTask thread.
   * @param  argument: Not used
   * @retval None
   */
-/* USER CODE END Header_StartBlinkyLEDTask */
-void StartBlinkyLEDTask(void *argument)
+/* USER CODE END Header_StartPWMTask */
+void StartPWMTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
-  /* Infinite loop */
-  for(;;)
-  {
-  	osDelay(5000);
-  }
+	uint16_t frequency = 30;
+	float dutyCycle = 0;
+	/* Infinite loop */
+	for(;;)
+	{
+		if(frequency >= 1000)
+		{
+			frequency = 30;
+		}
+		SetTIMPWMFrequency(&htim4, TIM_CHANNEL_1, frequency);
+		frequency++;
+
+		if(dutyCycle >= 1)
+		{
+			dutyCycle = 0;
+		}
+		SetTIMPWMDutyCycle(&htim4, TIM_CHANNEL_1, dutyCycle);
+		dutyCycle += 0.01;
+
+		osDelay(50);
+	}
   /* USER CODE END 5 */
 }
 
 /* USER CODE BEGIN Header_StartadcSamplingTask */
 /**
 * @brief Starts the ADC sampling task. Samples all 8 mux lines as
-* fast as possible every 50ms and reports values every 1s.
+* fast as possible at a given period and reports values with seperate period.
 * @param argument: Not used
 * @retval None
 */
@@ -445,8 +498,10 @@ void StartadcSamplingTask(void *argument)
 {
   /* USER CODE BEGIN StartadcSamplingTask */
   HAL_GPIO_WritePin(Mux_EN_GPIO_Port, Mux_EN_Pin, GPIO_PIN_RESET);
-
+  HAL_GPIO_WritePin(GPIO_1_GPIO_Port, GPIO_1_Pin, GPIO_PIN_SET);
+  SetMuxSelect(0);
   int loopCounter = 0;
+  uint16_t raws_mux3[50] = {0};
   /* Infinite loop */
   for(;;)
   {
@@ -456,35 +511,42 @@ void StartadcSamplingTask(void *argument)
   	{
   		SetMuxSelect(muxSelect);
   		HAL_ADC_Start(&hadc2);
-  		if (HAL_ADC_PollForConversion(&hadc2, 1) == HAL_OK)
+  		if (HAL_ADC_PollForConversion(&hadc2, 10) == HAL_OK)
   		{
 				raws[muxSelect] = HAL_ADC_GetValue(&hadc2);
 				muxSelect++;
 				HAL_ADC_Stop(&hadc2);
   		}
-  		else
-  		{
-  			printf("oops.");
-  		}
   	}
 
-  	if (loopCounter % 20 == 0)
+  	//raws_mux3[loopCounter] = raws[3];
+  	if (loopCounter % 50 == 0)
   	{
   		loopCounter = 0;
   		double voltage;
   		char msg[512] = {'\0'};
+
 			for (int i = 0; i < 8; i++)
 			{
 				char buffer[32] = {'\0'};
-				voltage = (double)raws[i] / 4098 * 3.3;
+				voltage = (double)raws[i] / 4096 * 3;
 				snprintf(buffer, sizeof(buffer), "Pin %d: %hu\t%1.4f\n\0", i, raws[i], voltage);
 				strncat(msg, buffer, strlen(buffer));
 			}
 			printf(msg);
+			/*
+  		for (int i = 0; i < 50; i++)
+			{
+				char buffer[8] = {'\0'};
+				snprintf(buffer, sizeof(buffer), "%hu\n\0", raws_mux3[i]);
+				strncat(msg, buffer, strlen(buffer));
+			}
+			*/
+  		printf(msg);
   	}
 
   	loopCounter++;
-  	osDelay(50);
+  	osDelay(20);
   }
   /* USER CODE END StartadcSamplingTask */
 }
