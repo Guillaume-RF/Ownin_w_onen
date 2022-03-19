@@ -47,7 +47,11 @@ ADC_HandleTypeDef hadc2;
 
 CAN_HandleTypeDef hcan;
 
+IWDG_HandleTypeDef hiwdg;
+
 TIM_HandleTypeDef htim4;
+
+WWDG_HandleTypeDef hwwdg;
 
 /* Definitions for PWM_DCTask */
 osThreadId_t PWM_DCTaskHandle;
@@ -63,6 +67,13 @@ const osThreadAttr_t adcSamplingTask_attributes = {
   .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
+/* Definitions for KickDogTask */
+osThreadId_t KickDogTaskHandle;
+const osThreadAttr_t KickDogTask_attributes = {
+  .name = "KickDogTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 /* USER CODE BEGIN PV */
 float TIM4_DutyCycle = 0.5;
 /* USER CODE END PV */
@@ -73,8 +84,11 @@ static void MX_GPIO_Init(void);
 static void MX_ADC2_Init(void);
 static void MX_CAN_Init(void);
 static void MX_TIM4_Init(void);
+static void MX_WWDG_Init(void);
+static void MX_IWDG_Init(void);
 void StartPWMTask(void *argument);
 void StartadcSamplingTask(void *argument);
+void StartKickDogTask(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -123,6 +137,8 @@ int main(void)
   MX_ADC2_Init();
   MX_CAN_Init();
   MX_TIM4_Init();
+  MX_WWDG_Init();
+  MX_IWDG_Init();
   /* USER CODE BEGIN 2 */
   HAL_ADCEx_Calibration_Start(&hadc2, ADC_SINGLE_ENDED);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
@@ -153,6 +169,9 @@ int main(void)
 
   /* creation of adcSamplingTask */
   adcSamplingTaskHandle = osThreadNew(StartadcSamplingTask, NULL, &adcSamplingTask_attributes);
+
+  /* creation of KickDogTask */
+  KickDogTaskHandle = osThreadNew(StartKickDogTask, NULL, &KickDogTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -190,9 +209,10 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
   RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL2;
@@ -316,6 +336,35 @@ static void MX_CAN_Init(void)
 }
 
 /**
+  * @brief IWDG Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_IWDG_Init(void)
+{
+
+  /* USER CODE BEGIN IWDG_Init 0 */
+
+  /* USER CODE END IWDG_Init 0 */
+
+  /* USER CODE BEGIN IWDG_Init 1 */
+
+  /* USER CODE END IWDG_Init 1 */
+  hiwdg.Instance = IWDG;
+  hiwdg.Init.Prescaler = IWDG_PRESCALER_8;
+  hiwdg.Init.Window = 4095;
+  hiwdg.Init.Reload = 2499;
+  if (HAL_IWDG_Init(&hiwdg) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN IWDG_Init 2 */
+
+  /* USER CODE END IWDG_Init 2 */
+
+}
+
+/**
   * @brief TIM4 Initialization Function
   * @param None
   * @retval None
@@ -371,6 +420,36 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 2 */
   HAL_TIM_MspPostInit(&htim4);
+
+}
+
+/**
+  * @brief WWDG Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_WWDG_Init(void)
+{
+
+  /* USER CODE BEGIN WWDG_Init 0 */
+
+  /* USER CODE END WWDG_Init 0 */
+
+  /* USER CODE BEGIN WWDG_Init 1 */
+
+  /* USER CODE END WWDG_Init 1 */
+  hwwdg.Instance = WWDG;
+  hwwdg.Init.Prescaler = WWDG_PRESCALER_8;
+  hwwdg.Init.Window = 94;
+  hwwdg.Init.Counter = 124;
+  hwwdg.Init.EWIMode = WWDG_EWI_DISABLE;
+  if (HAL_WWDG_Init(&hwwdg) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN WWDG_Init 2 */
+
+  /* USER CODE END WWDG_Init 2 */
 
 }
 
@@ -549,6 +628,26 @@ void StartadcSamplingTask(void *argument)
   	osDelay(20);
   }
   /* USER CODE END StartadcSamplingTask */
+}
+
+/* USER CODE BEGIN Header_StartKickDogTask */
+/**
+* @brief Function implementing the KickDogTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartKickDogTask */
+void StartKickDogTask(void *argument)
+{
+  /* USER CODE BEGIN StartKickDogTask */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(150);
+    HAL_WWDG_Refresh(&hwwdg);
+    HAL_IWDG_Refresh(&hiwdg);
+  }
+  /* USER CODE END StartKickDogTask */
 }
 
 /**
