@@ -43,7 +43,7 @@ float Fuse12V_GetCurrentSense(Fuse12V *fuse)
 		return 0;
 	}
 
-	voltage = (float)raw / ADC_RES;
+	voltage = (float)raw / ADC_RES * ADC_VREF;
 	current = voltage / fuse->currentGain / fuse->currentShunt;
 	return current;
 }

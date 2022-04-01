@@ -23,7 +23,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "HighPoweredFuse.h"
+#include "PeripheralUtilities.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,7 +48,6 @@ CAN_HandleTypeDef hcan;
 
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
-TIM_HandleTypeDef htim4;
 
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
@@ -67,12 +67,10 @@ static void MX_ADC2_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_CAN_Init(void);
 static void MX_TIM3_Init(void);
-static void MX_TIM4_Init(void);
 void StartDefaultTask(void *argument);
 
 /* USER CODE BEGIN PFP */
-void ADC_SetChannel (ADC_HandleTypeDef *adc, uint32_t channel);
-void Mux_SetChannel(uint8_t channel);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -96,7 +94,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
+  TIM4_Init();
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -112,7 +110,6 @@ int main(void)
   MX_TIM2_Init();
   MX_CAN_Init();
   MX_TIM3_Init();
-  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   HighPoweredFuse FuelPump;
   FuelPump.port_input = FUEL_PUMP_EN_GPIO_Port;
@@ -445,51 +442,6 @@ static void MX_TIM3_Init(void)
 }
 
 /**
-  * @brief TIM4 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM4_Init(void)
-{
-
-  /* USER CODE BEGIN TIM4_Init 0 */
-
-  /* USER CODE END TIM4_Init 0 */
-
-  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-
-  /* USER CODE BEGIN TIM4_Init 1 */
-
-  /* USER CODE END TIM4_Init 1 */
-  htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 8-1;
-  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 0xffff-1;
-  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM4_Init 2 */
-
-  /* USER CODE END TIM4_Init 2 */
-
-}
-
-/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -515,8 +467,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, FAN_1_DLY_1_Pin|FAN_1_SET_0_Pin|FAN_1_SET_1_Pin|INJECTION_SET_1_Pin
-                          |SPARE_5V_1_EN_Pin|BRAKE_PRESSURE_EN_Pin|FAN_2_DLY_0_Pin|FAN_2_DLY_1_Pin
-                          |FAN_2_SET_0_Pin, GPIO_PIN_RESET);
+                          |FAN_2_DLY_0_Pin|FAN_2_DLY_1_Pin|FAN_2_SET_0_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(DASH_BUTTON_EFUSE_EN_GPIO_Port, DASH_BUTTON_EFUSE_EN_Pin, GPIO_PIN_RESET);
@@ -526,8 +477,7 @@ static void MX_GPIO_Init(void)
                           |ECU_DAQ_DLY_0_Pin|ECU_DAQ_DLY_1_Pin|ECU_DAQ_SET_0_Pin|ECU_DAQ_SET_1_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, MUX_S0_Pin|MUX_S1_Pin|MUX_S2_Pin|IGNITION_EFUSE_EN_Pin
-                          |BRAKE_LIGHT_EN_Pin|SPARE_5V_2_EN_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, MUX_S0_Pin|MUX_S1_Pin|MUX_S2_Pin|IGNITION_EFUSE_EN_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, ECU_EFUSE_EN_Pin|DAQ_EFUSE_EN_Pin|SPARE_12V_DUAL_SET_MUX_0_Pin|SPARE_12V_DUAL_DLY_MUX_1_Pin
@@ -535,14 +485,22 @@ static void MX_GPIO_Init(void)
                           |SPARE_1_EFUSE_EN_Pin|NTWSO2_SET_0_Pin|NTWSO2_SET_1_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOG, IGNITION_DLY_0_Pin|TELEMETRY_DISPLAY_EN_Pin|ENGINE_SENSOR_EN_Pin|TIRE_TEMP_PRESS_EN_Pin
-                          |POTENTIOMETER_EN_Pin|NTWS_EFUSE_EN_Pin|NTWS02_DLY_0_Pin|NTWS02_DLY_1_Pin
+  HAL_GPIO_WritePin(GPIOG, IGNITION_DLY_0_Pin|NTWS_EFUSE_EN_Pin|NTWS02_DLY_0_Pin|NTWS02_DLY_1_Pin
                           |SPARE_12V_1_DIAG_SEL_1_Pin|SPARE_12V_1_DIAG_SEL_0_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOD, RADIO_DLY_0_Pin|SPARE_12V_2_EN_Pin|RADIO_DLY_1_Pin|RADIO_SET_0_Pin
                           |RADIO_EFUSE_EN_Pin|FAN_2_SET_1_Pin|WATER_PUMP_DLY_0_Pin|WATER_PUMP_DLY_1_Pin
                           |WATER_PUMP_SET_0_Pin|WATER_PUMP_SET_1_Pin|O2_SENSOR_EFUSE_EN_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOG, TELEMETRY_DISPLAY_EN_Pin|ENGINE_SENSOR_EN_Pin|TIRE_TEMP_PRESS_EN_Pin|POTENTIOMETER_EN_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOC, SPARE_5V_1_EN_Pin|BRAKE_PRESSURE_EN_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, BRAKE_LIGHT_EN_Pin|SPARE_5V_2_EN_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pins : STARTER_BUTTON_Pin COOL_SWITCH_Pin MAX_COOL_SWITCH_Pin */
   GPIO_InitStruct.Pin = STARTER_BUTTON_Pin|COOL_SWITCH_Pin|MAX_COOL_SWITCH_Pin;

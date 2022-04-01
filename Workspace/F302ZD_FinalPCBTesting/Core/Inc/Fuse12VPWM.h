@@ -10,7 +10,6 @@
 #include "main.h"
 #include "Fuse12V.h"
 #include "Fuse12VSettings.h"
-#include "PeripheralUtilities.h"
 
 typedef struct
 {

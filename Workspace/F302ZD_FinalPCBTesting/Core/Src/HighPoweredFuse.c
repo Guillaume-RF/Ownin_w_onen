@@ -75,7 +75,7 @@ float HighPoweredFuse_GetSenseData(HighPoweredFuse *fuse)
 	switch(fuse->senseState)
 	{
 		case Current:
-			voltage = (float)raw / ADC_RES;
+			voltage = (float)raw / ADC_RES * ADC_VREF;
 			value = voltage * fuse->currentGain / fuse->currentShunt;
 			break;
 		default:

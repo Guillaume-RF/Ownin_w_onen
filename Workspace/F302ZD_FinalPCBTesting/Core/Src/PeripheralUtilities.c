@@ -49,3 +49,39 @@ void TIM_SetPWMDutyCycle(TIM_HandleTypeDef *htim, uint32_t channel, float dutyCy
 	__HAL_TIM_SET_COMPARE(htim, channel, new_compare);
 }
 
+void Delay_us(uint16_t us)
+{
+	__HAL_TIM_SET_COUNTER(&TIM4_delay, 0);
+	HAL_TIM_Base_Start(&TIM4_delay);
+	while (__HAL_TIM_GET_COUNTER(&TIM4_delay) < us);
+	HAL_TIM_Base_Stop(&TIM4_delay);
+	return;
+}
+
+void TIM4_Init(void)
+{
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  TIM4_delay.Instance = TIM4;
+  TIM4_delay.Init.Prescaler = 8-1;
+  TIM4_delay.Init.CounterMode = TIM_COUNTERMODE_UP;
+  TIM4_delay.Init.Period = 0xffff-1;
+  TIM4_delay.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  TIM4_delay.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&TIM4_delay) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&TIM4_delay, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&TIM4_delay, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
