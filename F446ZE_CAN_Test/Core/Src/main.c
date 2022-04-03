@@ -48,14 +48,23 @@ UART_HandleTypeDef huart3;
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 /* USER CODE BEGIN PV */
-CAN_FilterTypeDef canFilterConfig;  //can filter config
+
 CAN_TxHeaderTypeDef TxHeader; //tx header
 CAN_RxHeaderTypeDef RxHeader; //rx header
-uint8_t TxData[8] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}; //tx bufer
-uint8_t RxData[8] = {0,0,0,0,0,0,0,0}; //rx buffer
+
 uint32_t canMailbox; //mailbox holder
 
+uint8_t TxData[8]; // = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}; //tx bufer
+uint8_t RxData[8]; // = {0,0,0,0,0,0,0,0}; //rx buffer
 
+uint8_t count = 0;
+
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+	count++;
+//	HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData);
+//	HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
+}
 
 
 /* USER CODE END PV */
@@ -108,42 +117,37 @@ int main(void)
   MX_CAN1_Init();
   /* USER CODE BEGIN 2 */
 
-  TxHeader.IDE = CAN_ID_STD; //use standard ID formats
-  TxHeader.StdId = 0x030; //ID of the transmitter
-  TxHeader.RTR = CAN_RTR_DATA; //data type for transmit frame
-  TxHeader.DLC = 2; //message size of two bytes
-
-  canFilterConfig.FilterActivation = CAN_FILTER_ENABLE;
-  canFilterConfig.FilterBank = 0;
-  canFilterConfig.FilterFIFOAssignment = CAN_FILTER_FIFO0;
-  canFilterConfig.FilterIdHigh = 0;
-  canFilterConfig.FilterIdLow = 0;
-  canFilterConfig.FilterMaskIdLow = 0x0000;
-  canFilterConfig.FilterMaskIdHigh = 0x0000;
-  canFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
-  canFilterConfig.FilterScale = CAN_FILTERSCALE_32BIT;
-  canFilterConfig.SlaveStartFilterBank = 20;
-
-  //Configuring CAN filter for CAN1
-  HAL_CAN_ConfigFilter(&hcan1, &canFilterConfig);
   //start can peripheral
   HAL_CAN_Start(&hcan1);
+
   //inilitlize callback function
   HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING);
 
+  TxHeader.IDE = CAN_ID_STD; //use standard ID formats
+  TxHeader.StdId = 0x103; //ID of the transmitter
+  TxHeader.RTR = CAN_RTR_DATA; //data type for transmit frame
+  TxHeader.DLC = 1; //message size of two bytes
+
+  TxData[0] = 0xf3;
+
+
+
+
+
 
 //  char msgBuf[100];
-  //	  HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
-  //	  sprintf(msgBuf, "CAN1 Attempting to send the following bytes over CAN: %hu, %hu, %hu, %hu, %hu, %hu, %hu, %hu.", TxData[0], TxData[1], TxData[2], TxData[3], TxData[4], TxData[5], TxData[6], TxData[7]);
-  //	  Send_Debug(msgBuf, 85);
-  //	  if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK)
-  //	  {
-  //	     Error_Handler ();
-  //	  }
-  //
-  //	  sprintf(msgBuf, "CAN1 message sent!");
-  //	  Send_Debug(msgBuf, 18);
-  //	  HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
+//  HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
+//  sprintf(msgBuf, "CAN1 Attempting to send the following bytes over CAN: %hu, %hu, %hu, %hu, %hu, %hu, %hu, %hu.", TxData[0], TxData[1], TxData[2], TxData[3], TxData[4], TxData[5], TxData[6], TxData[7]);
+//  Send_Debug(msgBuf, 85);
+//  if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &canMailbox) != HAL_OK)
+//  {
+//	 Error_Handler ();
+//  }
+  HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &canMailbox);
+
+//  sprintf(msgBuf, "CAN1 message sent!");
+//  Send_Debug(msgBuf, 18);
+  HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -256,7 +260,7 @@ static void MX_CAN1_Init(void)
   /* USER CODE END CAN1_Init 1 */
   hcan1.Instance = CAN1;
   hcan1.Init.Prescaler = 14;
-  hcan1.Init.Mode = CAN_MODE_NORMAL;
+  hcan1.Init.Mode = CAN_MODE_LOOPBACK;
   hcan1.Init.SyncJumpWidth = CAN_SJW_2TQ;
   hcan1.Init.TimeSeg1 = CAN_BS1_2TQ;
   hcan1.Init.TimeSeg2 = CAN_BS2_3TQ;
@@ -271,6 +275,19 @@ static void MX_CAN1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN CAN1_Init 2 */
+  CAN_FilterTypeDef canFilterConfig;  //can filter config
+  canFilterConfig.FilterActivation = CAN_FILTER_ENABLE;
+  canFilterConfig.FilterBank = 10;
+  canFilterConfig.FilterFIFOAssignment = CAN_FILTER_FIFO0;
+  canFilterConfig.FilterIdHigh = 0;
+  canFilterConfig.FilterIdLow = 0x00000;
+  canFilterConfig.FilterMaskIdHigh = 0;
+  canFilterConfig.FilterMaskIdLow = 0x0000;
+  canFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
+  canFilterConfig.FilterScale = CAN_FILTERSCALE_32BIT;
+  canFilterConfig.SlaveStartFilterBank = 0;
+  //Configuring CAN filter for CAN1
+  HAL_CAN_ConfigFilter(&hcan1, &canFilterConfig);
 
   /* USER CODE END CAN1_Init 2 */
 
@@ -405,24 +422,27 @@ void Send_Debug(char *message, size_t len)
 	ITM_SendChar('\n');
 }
 
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1)
-{
-	if (HAL_CAN_GetRxMessage(hcan1, CAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK)
-	{
-		Error_Handler();
-	}
+//void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1)
+//{
+//	HAL_CAN_GetRxMessage(hcan1, CAN_RX_FIFO0, &RxHeader, RxData);
+//	HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
+//	count++;
+//	if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK)
+//	{
+//		Error_Handler();
+//	}
+//
+//	char formatted[50];
+//	//	HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
+//	sprintf(formatted, "Message Received on CAN1!");
+//	Send_Debug(formatted, 25);
+//	for(int i = 0; i < (sizeof(RxData)/sizeof(RxData[0])); i++) {
+//	  sprintf(formatted, "%hu", RxData[i]);
+//	  Send_Debug(formatted, 4);
+//	}
+//	HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
 
-	char formatted[50];
-	//	HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
-	sprintf(formatted, "Message Received on CAN1!");
-	Send_Debug(formatted, 25);
-	for(int i = 0; i < (sizeof(RxData)/sizeof(RxData[0])); i++) {
-	  sprintf(formatted, "%hu", RxData[i]);
-	  Send_Debug(formatted, 4);
-	}
-	HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
-
-}
+//}
 
 //void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 //{

@@ -20,7 +20,6 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
-#include <stdio.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -62,7 +61,23 @@ const osThreadAttr_t adcSamplingTask_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
+/* Definitions for CANBroadcast */
+osThreadId_t CANBroadcastHandle;
+const osThreadAttr_t CANBroadcast_attributes = {
+  .name = "CANBroadcast",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 /* USER CODE BEGIN PV */
+CAN_TxHeaderTypeDef TxHeader; //tx header
+CAN_RxHeaderTypeDef RxHeader; //rx header
+
+uint32_t canMailbox; //mailbox holder
+
+uint8_t TxData[8];  //tx bufer
+uint8_t RxData[8];  //rx buffer
+
+uint8_t count = 0;
 
 /* USER CODE END PV */
 
@@ -74,6 +89,7 @@ static void MX_CAN_Init(void);
 static void MX_TIM4_Init(void);
 void StartBlinkyLEDTask(void *argument);
 void StartadcSamplingTask(void *argument);
+void StartTask03(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -117,6 +133,20 @@ int main(void)
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
 //  HAL_GPIO_WritePin(Enable_GPIO_Port, Enable_Pin, GPIO_PIN_RESET);
+  HAL_CAN_Start(&hcan);
+    //inilitlize callback function
+    HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
+
+    TxHeader.DLC = 1; //message size of two bytes
+    TxHeader.ExtId = 0;
+    TxHeader.IDE = CAN_ID_STD; //use standard ID formats
+    TxHeader.RTR = CAN_RTR_DATA; //data type for transmit frame
+    TxHeader.StdId = 0x69; //ID of the transmitter
+    TxHeader.TransmitGlobalTime = DISABLE;
+
+    TxData[0] = 0xf3;
+    HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &canMailbox);
+
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -144,6 +174,9 @@ int main(void)
 
   /* creation of adcSamplingTask */
   adcSamplingTaskHandle = osThreadNew(StartadcSamplingTask, NULL, &adcSamplingTask_attributes);
+
+  /* creation of CANBroadcast */
+  CANBroadcastHandle = osThreadNew(StartTask03, NULL, &CANBroadcast_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -285,10 +318,10 @@ static void MX_CAN_Init(void)
 
   /* USER CODE END CAN_Init 1 */
   hcan.Instance = CAN;
-  hcan.Init.Prescaler = 16;
-  hcan.Init.Mode = CAN_MODE_NORMAL;
+  hcan.Init.Prescaler = 4;
+  hcan.Init.Mode = CAN_MODE_LOOPBACK;
   hcan.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan.Init.TimeSeg1 = CAN_BS1_1TQ;
+  hcan.Init.TimeSeg1 = CAN_BS1_2TQ;
   hcan.Init.TimeSeg2 = CAN_BS2_1TQ;
   hcan.Init.TimeTriggeredMode = DISABLE;
   hcan.Init.AutoBusOff = DISABLE;
@@ -301,7 +334,19 @@ static void MX_CAN_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN CAN_Init 2 */
-
+  CAN_FilterTypeDef canFilterConfig;  //can filter config
+  canFilterConfig.FilterActivation = CAN_FILTER_ENABLE;
+	canFilterConfig.FilterBank = 14;
+	canFilterConfig.FilterFIFOAssignment = CAN_FILTER_FIFO0;
+	canFilterConfig.FilterIdHigh = 0;
+	canFilterConfig.FilterIdLow = 0x0000;
+	canFilterConfig.FilterMaskIdHigh = 0x0000;
+	canFilterConfig.FilterMaskIdLow = 0x0000;
+	canFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
+	canFilterConfig.FilterScale = CAN_FILTERSCALE_32BIT;
+	canFilterConfig.SlaveStartFilterBank = 0;
+//Configuring CAN filter for CAN1
+HAL_CAN_ConfigFilter(&hcan, &canFilterConfig);
   /* USER CODE END CAN_Init 2 */
 
 }
@@ -400,6 +445,13 @@ void Send_Debug(char *message, size_t len)
 	}
 	ITM_SendChar('\n');
 }
+
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+	count++;
+	HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData);
+//	HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartBlinkyLEDTask */
@@ -452,6 +504,25 @@ void StartadcSamplingTask(void *argument)
     osDelay(50);
   }
   /* USER CODE END StartadcSamplingTask */
+}
+
+/* USER CODE BEGIN Header_StartTask03 */
+/**
+* @brief Function implementing the CANBroadcast thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartTask03 */
+void StartTask03(void *argument)
+{
+  /* USER CODE BEGIN StartTask03 */
+  /* Infinite loop */
+  for(;;)
+  {
+	HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &canMailbox);
+    osDelay(1000);
+  }
+  /* USER CODE END StartTask03 */
 }
 
 /**

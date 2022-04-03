@@ -46,9 +46,10 @@ CAN_HandleTypeDef hcan;
 CAN_FilterTypeDef canFilterConfig;  //can filter config
 CAN_TxHeaderTypeDef TxHeader; //tx header
 CAN_RxHeaderTypeDef RxHeader; //rx header
-uint8_t TxData[8] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}; //tx bufer
-uint8_t RxData[8] = {0,0,0,0,0,0,0,0}; //rx buffer
+uint8_t TxData[8]; // = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}; //tx bufer
+uint8_t RxData[8]; // = {0,0,0,0,0,0,0,0}; //rx buffer
 uint32_t canMailbox; //mailbox holder
+uint8_t count = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -61,6 +62,13 @@ void Send_Debug(char *message, size_t len);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+	count++;
+	HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData);
+//	HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
+}
 
 /* USER CODE END 0 */
 
@@ -94,21 +102,32 @@ int main(void)
   MX_GPIO_Init();
   MX_CAN_Init();
   /* USER CODE BEGIN 2 */
-  TxHeader.IDE = CAN_ID_STD; //use standard ID formats
-  TxHeader.StdId = 0x020; //ID of the transmitter
-  TxHeader.RTR = CAN_RTR_DATA; //data type for transmit frame
-  TxHeader.DLC = 2; //message size of two bytes
+//  TxHeader.IDE = CAN_ID_STD; //use standard ID formats
+//  TxHeader.StdId = 0x020; //ID of the transmitter
+//  TxHeader.RTR = CAN_RTR_DATA; //data type for transmit frame
+//  TxHeader.DLC = 2; //message size of two bytes
+
+//  canFilterConfig.FilterActivation = CAN_FILTER_ENABLE;
+//  canFilterConfig.FilterBank = 0;
+//  canFilterConfig.FilterFIFOAssignment = CAN_FILTER_FIFO0;
+//  canFilterConfig.FilterIdHigh = 0;
+//  canFilterConfig.FilterIdLow = 0;
+//  canFilterConfig.FilterMaskIdLow = 0x0000;
+//  canFilterConfig.FilterMaskIdHigh = 0x0000;
+//  canFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
+//  canFilterConfig.FilterScale = CAN_FILTERSCALE_32BIT;
+//  canFilterConfig.SlaveStartFilterBank = 20;
 
   canFilterConfig.FilterActivation = CAN_FILTER_ENABLE;
-  canFilterConfig.FilterBank = 0;
-  canFilterConfig.FilterFIFOAssignment = CAN_FILTER_FIFO0;
-  canFilterConfig.FilterIdHigh = 0;
-  canFilterConfig.FilterIdLow = 0;
-  canFilterConfig.FilterMaskIdLow = 0x0000;
-  canFilterConfig.FilterMaskIdHigh = 0x0000;
-  canFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
-  canFilterConfig.FilterScale = CAN_FILTERSCALE_32BIT;
-  canFilterConfig.SlaveStartFilterBank = 20;
+      canFilterConfig.FilterBank = 14;
+      canFilterConfig.FilterFIFOAssignment = CAN_FILTER_FIFO0;
+      canFilterConfig.FilterIdHigh = 0;
+      canFilterConfig.FilterIdLow = 0x0000;
+      canFilterConfig.FilterMaskIdHigh = 0x0000;
+      canFilterConfig.FilterMaskIdLow = 0x0000;
+      canFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
+      canFilterConfig.FilterScale = CAN_FILTERSCALE_32BIT;
+      canFilterConfig.SlaveStartFilterBank = 0;
 
   //Configuring CAN filter for CAN1
   HAL_CAN_ConfigFilter(&hcan, &canFilterConfig);
@@ -116,6 +135,21 @@ int main(void)
   HAL_CAN_Start(&hcan);
   //inilitlize callback function
   HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
+
+  TxHeader.DLC = 1; //message size of two bytes
+    TxHeader.ExtId = 0;
+    TxHeader.IDE = CAN_ID_STD; //use standard ID formats
+    TxHeader.RTR = CAN_RTR_DATA; //data type for transmit frame
+    TxHeader.StdId = 0x103; //ID of the transmitter
+    TxHeader.TransmitGlobalTime = DISABLE;
+
+    TxData[0] = 0xf3;
+
+  if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &canMailbox) != HAL_OK)
+  {
+	 Error_Handler ();
+  }
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -123,17 +157,18 @@ int main(void)
   while (1)
   {
 	  //state message going to be send
-	  char msgBuf[100];
-	  sprintf(msgBuf, "CAN1 Attempting to send the following bytes over CAN: %hu, %hu, %hu, %hu, %hu, %hu, %hu, %hu.", TxData[0], TxData[1], TxData[2], TxData[3], TxData[4], TxData[5], TxData[6], TxData[7]);
-	  Send_Debug(msgBuf, 85);
+//	  char msgBuf[100];
+//	  sprintf(msgBuf, "CAN1 Attempting to send the following bytes over CAN: %hu, %hu, %hu, %hu, %hu, %hu, %hu, %hu.", TxData[0], TxData[1], TxData[2], TxData[3], TxData[4], TxData[5], TxData[6], TxData[7]);
+//	  Send_Debug(msgBuf, 85);
 	  //sending can message
+
+//	  sprintf(msgBuf, "CAN1 message sent!");
+//	  Send_Debug(msgBuf, 18);
 	  if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &canMailbox) != HAL_OK)
-	  {
+		{
 		 Error_Handler ();
-	  }
-	  sprintf(msgBuf, "CAN1 message sent!");
-	  Send_Debug(msgBuf, 18);
-	  HAL_Delay(1000);
+		}
+	  HAL_Delay(2000);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -237,23 +272,23 @@ void Send_Debug(char *message, size_t len)
 	ITM_SendChar('\n');
 }
 
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1)
-{
-	if (HAL_CAN_GetRxMessage(hcan1, CAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK)
-	{
-		Error_Handler();
-	}
-
-	char formatted[50];
-	//	HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
-	sprintf(formatted, "Message Received on CAN2!");
-	Send_Debug(formatted, 25);
-	for(int i = 0; i < (sizeof(RxData)/sizeof(RxData[0])); i++) {
-	  sprintf(formatted, "%hu", RxData[i]);
-	  Send_Debug(formatted, 4);
-	}
-
-}
+//void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1)
+//{
+//	if (HAL_CAN_GetRxMessage(hcan1, CAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK)
+//	{
+//		Error_Handler();
+//	}
+//
+//	char formatted[50];
+//	//	HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
+//	sprintf(formatted, "Message Received on CAN2!");
+//	Send_Debug(formatted, 25);
+//	for(int i = 0; i < (sizeof(RxData)/sizeof(RxData[0])); i++) {
+//	  sprintf(formatted, "%hu", RxData[i]);
+//	  Send_Debug(formatted, 4);
+//	}
+//
+//}
 /* USER CODE END 4 */
 
 /**
