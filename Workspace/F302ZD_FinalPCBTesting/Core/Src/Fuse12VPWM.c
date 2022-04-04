@@ -33,6 +33,16 @@ void Fuse12VPWM_SetInputDutyCycle(Fuse12V_PWM *fuse, float dutyCycle)
 	return;
 }
 
+void Fuse12VPWM_StartPWM(Fuse12V_PWM *fuse)
+{
+  HAL_TIM_PWM_Start(fuse->TIM_input, fuse->TIM_channel);
+}
+
+void Fuse12VPWM_StopPWM(Fuse12V_PWM *fuse)
+{
+  HAL_TIM_PWM_Stop(fuse->TIM_input, fuse->TIM_channel);
+}
+
 /*
  * Gets the current through the fuse. Since enable of this fuse can be PWM'ed, the current sense may also be
  * a PWM signal. Thus, we should sample enough within a certain interval to be sure to sample at least 1 'on'

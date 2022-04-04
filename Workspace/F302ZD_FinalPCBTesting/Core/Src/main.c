@@ -25,6 +25,12 @@
 /* USER CODE BEGIN Includes */
 #include "HighPoweredFuse.h"
 #include "PeripheralUtilities.h"
+#include "Fuse12VSettings.h"
+#include "Fuse12VPWM.h"
+#include "LowPowerFuse.h"
+#include "RadioFuse.h"
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -48,16 +54,68 @@ CAN_HandleTypeDef hcan;
 
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
 
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
   .name = "defaultTask",
-  .stack_size = 128 * 4,
+  .stack_size = 1024 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
+/* Definitions for samplingTask */
+osThreadId_t samplingTaskHandle;
+const osThreadAttr_t samplingTask_attributes = {
+  .name = "samplingTask",
+  .stack_size = 1024 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 /* USER CODE BEGIN PV */
+Fuse12VSettings Fan1Settings;
+Fuse12VSettings Fan2Settings;
+Fuse12VSettings ECUDAQSettings;
+Fuse12VSettings WaterPumpsSettings;
+Fuse12VSettings NTWSO2Settings;
+Fuse12VSettings InjectionDashSettings;
+Fuse12VSettings StarterIgnitionSettings;
+Fuse12VSettings Spare12VSettings;
+Fuse12VSettings RadioSettings;
 
+HighPoweredFuse FuelPump;
+HighPoweredFuse SpareHP;
+
+Fuse12V_PWM Fan1;
+Fuse12V_PWM Fan2;
+Fuse12V_PWM WaterPump1;
+Fuse12V_PWM WaterPump2;
+
+Fuse12V ECU;
+Fuse12V DAQ;
+Fuse12V O2;
+Fuse12V NTWS;
+Fuse12V Dash;
+Fuse12V Injection;
+Fuse12V Ignition;
+Fuse12V Starter;
+Fuse12V Spare12V1;
+Fuse12V Spare12V2;
+
+RadioFuse Radio;
+
+LowPowerFuse TelemetryDisplay;
+LowPowerFuse TireTempPress;
+LowPowerFuse BrakePressure;
+LowPowerFuse BrakeLight;
+LowPowerFuse EngineSensor;
+LowPowerFuse Potentiometer;
+LowPowerFuse Spare5V1;
+LowPowerFuse Spare5V2;
+
+HighPoweredFuse *HighPoweredFuses[2] = {&FuelPump, &SpareHP};
+Fuse12V_PWM *PWMedFuses[4] = {&Fan1, &Fan2, &WaterPump1, &WaterPump2};
+Fuse12V *Fuses12V[10] = {&ECU, &DAQ, &O2, &NTWS, &Dash, &Injection, &Ignition, &Starter, &Spare12V1, &Spare12V2};
+LowPowerFuse *LowPowerFuses[8] = {&TelemetryDisplay, &TireTempPress, &BrakePressure, &BrakeLight, &EngineSensor, &Potentiometer,
+		&Spare5V1, &Spare5V2};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -67,15 +125,24 @@ static void MX_ADC2_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_CAN_Init(void);
 static void MX_TIM3_Init(void);
+static void MX_TIM4_Init(void);
 void StartDefaultTask(void *argument);
+void StartSamplingTask(void *argument);
 
 /* USER CODE BEGIN PFP */
-
+void ConfigureMembers(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+int _write(int32_t file, uint8_t *ptr, int32_t len)
+{
+	/* Implement your write code here, this is used by puts and printf for example */
+	int i=0;
+	for(i=0 ; i<len ; i++)
+	ITM_SendChar((*ptr++));
+	return len;
+}
 /* USER CODE END 0 */
 
 /**
@@ -94,7 +161,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-  TIM4_Init();
+  //TIM4_Init();
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -110,23 +177,10 @@ int main(void)
   MX_TIM2_Init();
   MX_CAN_Init();
   MX_TIM3_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
-  HighPoweredFuse FuelPump;
-  FuelPump.port_input = FUEL_PUMP_EN_GPIO_Port;
-  FuelPump.port_senseSelect0 = FUEL_PUMP_DIAG_SEL_0_GPIO_Port;
-  FuelPump.port_senseSelect1 = FUEL_PUMP_DIAG_SEL_1_GPIO_Port;
-  FuelPump.port_faultRST = FUEL_PUMP_FAULTRESET_GPIO_Port;
+  ConfigureMembers();
 
-  FuelPump.pin_input = FUEL_PUMP_EN_Pin;
-  FuelPump.pin_senseSelect0 = FUEL_PUMP_DIAG_SEL_0_Pin;
-  FuelPump.pin_senseSelect1 = FUEL_PUMP_DIAG_SEL_1_Pin;
-  FuelPump.pin_faultRST = FUEL_PUMP_FAULTRESET_Pin;
-
-  FuelPump.ADC_multiSense = &hadc2;
-  FuelPump.ADC_channel = ADC_CHANNEL_12;
-  FuelPump.mux_channel = 1;
-  FuelPump.currentGain = 3440;
-  FuelPump.currentShunt = 649;
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -151,6 +205,9 @@ int main(void)
   /* Create the thread(s) */
   /* creation of defaultTask */
   defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+
+  /* creation of samplingTask */
+  samplingTaskHandle = osThreadNew(StartSamplingTask, NULL, &samplingTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -335,9 +392,9 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 0;
-  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 4294967295;
+  htim2.Init.Prescaler = 7;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_DOWN;
+  htim2.Init.Period = 999;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -402,9 +459,9 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 0;
-  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 65535;
+  htim3.Init.Prescaler = 7;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_DOWN;
+  htim3.Init.Period = 999;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
@@ -438,6 +495,51 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 2 */
   HAL_TIM_MspPostInit(&htim3);
+
+}
+
+/**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 8-1;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 65535;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
 
 }
 
@@ -485,7 +587,7 @@ static void MX_GPIO_Init(void)
                           |SPARE_1_EFUSE_EN_Pin|NTWSO2_SET_0_Pin|NTWSO2_SET_1_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOG, IGNITION_DLY_0_Pin|NTWS_EFUSE_EN_Pin|NTWS02_DLY_0_Pin|NTWS02_DLY_1_Pin
+  HAL_GPIO_WritePin(GPIOG, IGNITION_DLY_0_Pin|NTWS_EFUSE_EN_Pin|NTWSO2_DLY_0_Pin|NTWSO2_DLY_1_Pin
                           |SPARE_12V_1_DIAG_SEL_1_Pin|SPARE_12V_1_DIAG_SEL_0_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
@@ -603,10 +705,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pins : IGNITION_DLY_0_Pin TELEMETRY_DISPLAY_EN_Pin ENGINE_SENSOR_EN_Pin TIRE_TEMP_PRESS_EN_Pin
-                           POTENTIOMETER_EN_Pin NTWS_EFUSE_EN_Pin NTWS02_DLY_0_Pin NTWS02_DLY_1_Pin
+                           POTENTIOMETER_EN_Pin NTWS_EFUSE_EN_Pin NTWSO2_DLY_0_Pin NTWSO2_DLY_1_Pin
                            SPARE_12V_1_DIAG_SEL_1_Pin SPARE_12V_1_DIAG_SEL_0_Pin */
   GPIO_InitStruct.Pin = IGNITION_DLY_0_Pin|TELEMETRY_DISPLAY_EN_Pin|ENGINE_SENSOR_EN_Pin|TIRE_TEMP_PRESS_EN_Pin
-                          |POTENTIOMETER_EN_Pin|NTWS_EFUSE_EN_Pin|NTWS02_DLY_0_Pin|NTWS02_DLY_1_Pin
+                          |POTENTIOMETER_EN_Pin|NTWS_EFUSE_EN_Pin|NTWSO2_DLY_0_Pin|NTWSO2_DLY_1_Pin
                           |SPARE_12V_1_DIAG_SEL_1_Pin|SPARE_12V_1_DIAG_SEL_0_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -647,7 +749,447 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void ConfigureMembers(void)
+{
+	/*High Powered Fuses*/
+	/*Fuel Pump*/
+	FuelPump.port_input = FUEL_PUMP_EN_GPIO_Port;
+	FuelPump.port_senseSelect0 = FUEL_PUMP_DIAG_SEL_0_GPIO_Port;
+	FuelPump.port_senseSelect1 = FUEL_PUMP_DIAG_SEL_1_GPIO_Port;
+	FuelPump.port_faultRST = FUEL_PUMP_FAULTRESET_GPIO_Port;
 
+	FuelPump.pin_input = FUEL_PUMP_EN_Pin;
+	FuelPump.pin_senseSelect0 = FUEL_PUMP_DIAG_SEL_0_Pin;
+	FuelPump.pin_senseSelect1 = FUEL_PUMP_DIAG_SEL_1_Pin;
+	FuelPump.pin_faultRST = FUEL_PUMP_FAULTRESET_Pin;
+
+	FuelPump.ADC_multiSense = &hadc2;
+	FuelPump.ADC_channel = ADC_CHANNEL_12;
+	FuelPump.mux_channel = 1;
+	FuelPump.currentGain = 3440;
+	FuelPump.currentShunt = 649;
+
+	/*Spare high powered fuse*/
+	SpareHP.port_input = SPARE_1_EFUSE_EN_GPIO_Port;
+	SpareHP.port_senseSelect0 = SPARE_12V_1_DIAG_SEL_0_GPIO_Port;
+	SpareHP.port_senseSelect1 = SPARE_12V_1_DIAG_SEL_1_GPIO_Port;
+	SpareHP.port_faultRST = SPARE_1_FAULTRESET_GPIO_Port;
+
+	SpareHP.pin_input = SPARE_1_EFUSE_EN_Pin;
+	SpareHP.pin_senseSelect0 = SPARE_12V_1_DIAG_SEL_0_Pin;
+	SpareHP.pin_senseSelect1 = SPARE_12V_1_DIAG_SEL_1_Pin;
+	SpareHP.pin_faultRST = FUEL_PUMP_FAULTRESET_Pin;
+
+	SpareHP.ADC_multiSense = &hadc2;
+	SpareHP.ADC_channel = ADC_CHANNEL_9;
+	SpareHP.mux_channel = 3;
+	SpareHP.currentGain = 3440;
+	SpareHP.currentShunt = 649;
+
+	/*12V fuse settings.*/
+	/*Fan1 settings*/
+	Fan1Settings.port_currentMux0 = FAN_1_SET_0_GPIO_Port;
+	Fan1Settings.port_currentMux1 = FAN_1_SET_1_GPIO_Port;
+	Fan1Settings.port_delayMux0 = FAN_1_DLY_0_GPIO_Port;
+	Fan1Settings.port_delayMux1 = FAN_1_DLY_1_GPIO_Port;
+
+	Fan1Settings.pin_currentMux0 = FAN_1_SET_0_Pin;
+	Fan1Settings.pin_currentMux1 = FAN_1_SET_1_Pin;
+	Fan1Settings.pin_delayMux0 = FAN_1_DLY_0_Pin;
+	Fan1Settings.pin_delayMux1 = FAN_1_DLY_1_Pin;
+
+	/*Fan2 settings*/
+	Fan2Settings.port_currentMux0 = FAN_2_SET_0_GPIO_Port;
+	Fan2Settings.port_currentMux1 = FAN_2_SET_1_GPIO_Port;
+	Fan2Settings.port_delayMux0 = FAN_2_DLY_0_GPIO_Port;
+	Fan2Settings.port_delayMux1 = FAN_2_DLY_1_GPIO_Port;
+
+	Fan2Settings.pin_currentMux0 = FAN_2_SET_0_Pin;
+	Fan2Settings.pin_currentMux1 = FAN_2_SET_1_Pin;
+	Fan2Settings.pin_delayMux0 = FAN_2_DLY_0_Pin;
+	Fan2Settings.pin_delayMux1 = FAN_2_DLY_1_Pin;
+
+	/*Water pumps settings*/
+	ECUDAQSettings.port_currentMux0 = ECU_DAQ_SET_0_GPIO_Port;
+	ECUDAQSettings.port_currentMux1 = ECU_DAQ_SET_1_GPIO_Port;
+	ECUDAQSettings.port_delayMux0 = ECU_DAQ_DLY_0_GPIO_Port;
+	ECUDAQSettings.port_delayMux1 = ECU_DAQ_DLY_1_GPIO_Port;
+
+	ECUDAQSettings.pin_currentMux0 = ECU_DAQ_SET_0_Pin;
+	ECUDAQSettings.pin_currentMux1 = ECU_DAQ_SET_1_Pin;
+	ECUDAQSettings.pin_delayMux0 = ECU_DAQ_DLY_0_Pin;
+	ECUDAQSettings.pin_delayMux1 = ECU_DAQ_DLY_1_Pin;
+
+	/*ECU & DAQ settings*/
+	WaterPumpsSettings.port_currentMux0 = WATER_PUMP_SET_0_GPIO_Port;
+	WaterPumpsSettings.port_currentMux1 = WATER_PUMP_SET_1_GPIO_Port;
+	WaterPumpsSettings.port_delayMux0 = WATER_PUMP_DLY_0_GPIO_Port;
+	WaterPumpsSettings.port_delayMux1 = WATER_PUMP_DLY_1_GPIO_Port;
+
+	WaterPumpsSettings.pin_currentMux0 = WATER_PUMP_SET_0_Pin;
+	WaterPumpsSettings.pin_currentMux1 = WATER_PUMP_SET_1_Pin;
+	WaterPumpsSettings.pin_delayMux0 = WATER_PUMP_DLY_0_Pin;
+	WaterPumpsSettings.pin_delayMux1 = WATER_PUMP_DLY_1_Pin;
+
+	/*NTWS & O2 Settings	 */
+	NTWSO2Settings.port_currentMux0 = NTWSO2_SET_0_GPIO_Port;
+	NTWSO2Settings.port_currentMux1 = NTWSO2_SET_1_GPIO_Port;
+	NTWSO2Settings.port_delayMux0 = NTWSO2_DLY_0_GPIO_Port;
+	NTWSO2Settings.port_delayMux1 = NTWSO2_DLY_1_GPIO_Port;
+
+	NTWSO2Settings.pin_currentMux0 = NTWSO2_SET_0_Pin;
+	NTWSO2Settings.pin_currentMux1 = NTWSO2_SET_1_Pin;
+	NTWSO2Settings.pin_delayMux0 = NTWSO2_DLY_0_Pin;
+	NTWSO2Settings.pin_delayMux1 = NTWSO2_DLY_1_Pin;
+
+	/*Injection and dash settings */
+	InjectionDashSettings.port_currentMux0 = INJECTION_SET_0_GPIO_Port;
+	InjectionDashSettings.port_currentMux1 = INJECTION_SET_1_GPIO_Port;
+	InjectionDashSettings.port_delayMux0 = INJECTION_DLY_0_GPIO_Port;
+	InjectionDashSettings.port_delayMux1 = INJECTION_DLY_1_GPIO_Port;
+
+	InjectionDashSettings.pin_currentMux0 = INJECTION_SET_0_Pin;
+	InjectionDashSettings.pin_currentMux1 = INJECTION_SET_1_Pin;
+	InjectionDashSettings.pin_delayMux0 = INJECTION_DLY_0_Pin;
+	InjectionDashSettings.pin_delayMux1 = INJECTION_DLY_1_Pin;
+
+	/*Starter and ignition settings*/
+	StarterIgnitionSettings.port_currentMux0 = IGNITION_SET_0_GPIO_Port;
+	StarterIgnitionSettings.port_currentMux1 = IGNITION_SET_1_GPIO_Port;
+	StarterIgnitionSettings.port_delayMux0 = IGNITION_DLY_0_GPIO_Port;
+	StarterIgnitionSettings.port_delayMux1 = IGNITION_DLY_1_GPIO_Port;
+
+	StarterIgnitionSettings.pin_currentMux0 = IGNITION_SET_0_Pin;
+	StarterIgnitionSettings.pin_currentMux1 = IGNITION_SET_1_Pin;
+	StarterIgnitionSettings.pin_delayMux0 = IGNITION_DLY_0_Pin;
+	StarterIgnitionSettings.pin_delayMux1 = IGNITION_DLY_0_Pin;
+
+	/*Spare 12V setting*/
+	Spare12VSettings.port_currentMux0 = SPARE_12V_DUAL_SET_MUX_0_GPIO_Port;
+	Spare12VSettings.port_currentMux1 = SPARE_12V_DUAL_SET_MUX_1_GPIO_Port;
+	Spare12VSettings.port_delayMux0 = SPARE_12V_DUAL_DLY_MUX_0_GPIO_Port;
+	Spare12VSettings.port_delayMux1 = SPARE_12V_DUAL_DLY_MUX_1_GPIO_Port;
+
+	Spare12VSettings.pin_currentMux0 = SPARE_12V_DUAL_SET_MUX_0_Pin;
+	Spare12VSettings.pin_currentMux1 = SPARE_12V_DUAL_SET_MUX_1_Pin;
+	Spare12VSettings.pin_delayMux0 = SPARE_12V_DUAL_DLY_MUX_0_Pin;
+	Spare12VSettings.pin_delayMux1 = SPARE_12V_DUAL_DLY_MUX_1_Pin;
+
+	/*Radio settings*/
+	RadioSettings.port_currentMux0 = RADIO_SET_0_GPIO_Port;
+	RadioSettings.port_currentMux1 = RADIO_SET_1_GPIO_Port;
+	RadioSettings.port_delayMux0 = RADIO_DLY_0_GPIO_Port;
+	RadioSettings.port_delayMux1 = RADIO_DLY_1_GPIO_Port;
+
+	RadioSettings.pin_currentMux0 = RADIO_SET_0_Pin;
+	RadioSettings.pin_currentMux1 = RADIO_SET_1_Pin;
+	RadioSettings.pin_delayMux0 = RADIO_DLY_0_Pin;
+	RadioSettings.pin_delayMux1 = RADIO_DLY_1_Pin;
+
+	/*12V PWM'ed fuses.*/
+	/*Fan 1*/
+	Fan1.TIM_input = &htim3;
+	Fan1.TIM_channel = TIM_CHANNEL_1;
+	Fan1.dutyCycle = 0;
+	Fan1.frequency = 1000;
+
+	Fan1.ADC_diagnostic = &hadc2;
+	Fan1.ADC_diagnosticChannel = ADC_CHANNEL_9;
+	Fan1.mux_diagnosticChannel = 5;
+
+	Fan1.ADC_currentSense = &hadc2;
+	Fan1.ADC_currentSenseChannel = ADC_CHANNEL_12;
+	Fan1.mux_currentSenseChannel = 3;
+
+	Fan1.currentGain = 20;
+	Fan1.currentShunt = 0.018;
+
+	Fan1.settings = &Fan1Settings;
+
+	/*Fan 2*/
+	Fan2.TIM_input = &htim2;
+	Fan2.TIM_channel = TIM_CHANNEL_1;
+	Fan2.dutyCycle = 0;
+	Fan2.frequency = 1000;
+
+	Fan2.ADC_diagnostic = &hadc2;
+	Fan2.ADC_diagnosticChannel = ADC_CHANNEL_10;
+	Fan2.mux_diagnosticChannel = 5;
+
+	Fan2.ADC_currentSense = &hadc2;
+	Fan2.ADC_currentSenseChannel = ADC_CHANNEL_9;
+	Fan2.mux_currentSenseChannel = 4;
+
+	Fan2.currentGain = 20;
+	Fan2.currentShunt = 0.018;
+
+	Fan2.settings = &Fan2Settings;
+
+	/*Water pump 1*/
+	WaterPump1.TIM_input = &htim2;
+	WaterPump1.TIM_channel = TIM_CHANNEL_2;
+	WaterPump1.dutyCycle = 0;
+	WaterPump1.frequency = 1000;
+
+	WaterPump1.ADC_diagnostic = &hadc2;
+	WaterPump1.ADC_diagnosticChannel = ADC_CHANNEL_10;
+	WaterPump1.mux_diagnosticChannel = 6;
+
+	WaterPump1.ADC_currentSense = &hadc2;
+	WaterPump1.ADC_currentSenseChannel = ADC_CHANNEL_12;
+	WaterPump1.mux_currentSenseChannel = 3;
+
+	WaterPump1.currentGain = 20;
+	WaterPump1.currentShunt = 0.018;
+
+	WaterPump1.settings = &WaterPumpsSettings;
+
+	/*Water pump 2*/
+	WaterPump2.TIM_input = &htim2;
+	WaterPump2.TIM_channel = TIM_CHANNEL_4;
+	WaterPump2.dutyCycle = 0;
+	WaterPump2.frequency = 1000;
+
+	WaterPump2.ADC_diagnostic = &hadc2;
+	WaterPump2.ADC_diagnosticChannel = ADC_CHANNEL_10;
+	WaterPump2.mux_diagnosticChannel = 7;
+
+	WaterPump2.ADC_currentSense = &hadc2;
+	WaterPump2.ADC_currentSenseChannel = ADC_CHANNEL_9;
+	WaterPump2.mux_currentSenseChannel = 2;
+
+	WaterPump2.currentGain = 20;
+	WaterPump2.currentShunt = 0.018;
+
+	WaterPump2.settings = &WaterPumpsSettings;
+
+	/*12V fuses*/
+	/*ECU*/
+	ECU.port_input = ECU_EFUSE_EN_GPIO_Port;
+	ECU.port_diagnostic = ECU_EFUSE_DIAG_GPIO_Port;
+
+	ECU.pin_input = ECU_EFUSE_EN_Pin;
+	ECU.pin_diagnostic = ECU_EFUSE_DIAG_Pin;
+
+	ECU.ADC_currentSense = &hadc2;
+	ECU.ADC_channel = ADC_CHANNEL_12;
+	ECU.mux_channel = 7;
+
+	ECU.currentGain = 20;
+	ECU.currentShunt = 0.165;
+
+	ECU.settings = &ECUDAQSettings;
+
+	/*DAQ*/
+	DAQ.port_input = DAQ_EFUSE_EN_GPIO_Port;
+	DAQ.port_diagnostic = DAQ_EFUSE_DIAG_GPIO_Port;
+
+	DAQ.pin_input = DAQ_EFUSE_EN_Pin;
+	DAQ.pin_diagnostic = DAQ_EFUSE_DIAG_Pin;
+
+	DAQ.ADC_currentSense = &hadc2;
+	DAQ.ADC_channel = ADC_CHANNEL_12;
+	DAQ.mux_channel = 6;
+
+	DAQ.currentGain = 20;
+	DAQ.currentShunt = 0.165;
+
+	DAQ.settings = &ECUDAQSettings;
+
+	/*O2*/
+	O2.port_input = O2_SENSOR_EFUSE_EN_GPIO_Port;
+	O2.port_diagnostic = O2_SENSOR_EFUSE_DIAG_GPIO_Port;
+
+	O2.pin_input = O2_SENSOR_EFUSE_EN_Pin;
+	O2.pin_diagnostic = O2_SENSOR_EFUSE_DIAG_Pin;
+
+	O2.ADC_currentSense = &hadc2;
+	O2.ADC_channel = ADC_CHANNEL_9;
+	O2.mux_channel = 0;
+
+	O2.currentGain = 20;
+	O2.currentShunt = 0.165;
+
+	O2.settings = &NTWSO2Settings;
+
+	/*NTWS*/
+	NTWS.port_input = NTWS_EFUSE_EN_GPIO_Port;
+	NTWS.port_diagnostic = NTWS_EFUSE_DIAG_GPIO_Port;
+
+	NTWS.pin_input = NTWS_EFUSE_EN_Pin;
+	NTWS.pin_diagnostic = NTWS_EFUSE_DIAG_Pin;
+
+	NTWS.ADC_currentSense = &hadc2;
+	NTWS.ADC_channel = ADC_CHANNEL_9;
+	NTWS.mux_channel = 1;
+
+	NTWS.currentGain = 20;
+	NTWS.currentShunt = 0.165;
+
+	NTWS.settings = &NTWSO2Settings;
+
+	/*Dash*/
+	Dash.port_input = DASH_BUTTON_EFUSE_EN_GPIO_Port;
+	Dash.port_diagnostic = DASH_BUTTON_EFUSE_DIAG_GPIO_Port;
+
+	Dash.pin_input = DASH_BUTTON_EFUSE_EN_Pin;
+	Dash.pin_diagnostic = DASH_BUTTON_EFUSE_DIAG_Pin;
+
+	Dash.ADC_currentSense = &hadc2;
+	Dash.ADC_channel = ADC_CHANNEL_9;
+	Dash.mux_channel = 6;
+
+	Dash.currentGain = 20;
+	Dash.currentShunt = 0.033;
+
+	Dash.settings = &InjectionDashSettings;
+
+	/*Injection*/
+	Injection.port_input = INJECTION_EFUSE_EN_GPIO_Port;
+	Injection.port_diagnostic = INJECTION_EFUSE_DIAG_GPIO_Port;
+
+	Injection.pin_input = INJECTION_EFUSE_EN_Pin;
+	Injection.pin_diagnostic = INJECTION_EFUSE_DIAG_Pin;
+
+	Injection.ADC_currentSense = &hadc2;
+	Injection.ADC_channel = ADC_CHANNEL_9;
+	Injection.mux_channel = 7;
+
+	Injection.currentGain = 20;
+	Injection.currentShunt = 0.033;
+
+	Injection.settings = &InjectionDashSettings;
+
+	/*Ignition*/
+	Ignition.port_input = IGNITION_EFUSE_EN_GPIO_Port;
+	Ignition.port_diagnostic = IGNITION_EFUSE_DIAG_GPIO_Port;
+
+	Ignition.pin_input = IGNITION_EFUSE_EN_Pin;
+	Ignition.pin_diagnostic = IGNITION_EFUSE_DIAG_Pin;
+
+	Ignition.ADC_currentSense = &hadc2;
+	Ignition.ADC_channel = ADC_CHANNEL_12;
+	Ignition.mux_channel = 4;
+
+	Ignition.currentGain = 20;
+	Ignition.currentShunt = 0.165;
+
+	Ignition.settings = &StarterIgnitionSettings;
+
+	/*Starter*/
+	Starter.port_input = STARTER_RELAY_EFUSE_EN_GPIO_Port;
+	Starter.port_diagnostic = STARTER_RELAY_EFUSE_DIAG_GPIO_Port;
+
+	Starter.pin_input = STARTER_RELAY_EFUSE_EN_Pin;
+	Starter.pin_diagnostic = STARTER_RELAY_EFUSE_DIAG_Pin;
+
+	Starter.ADC_currentSense = &hadc2;
+	Starter.ADC_channel = ADC_CHANNEL_12;
+	Starter.mux_channel = 2;
+
+	Starter.currentGain = 20;
+	Starter.currentShunt = 0.165;
+
+	Starter.settings = &StarterIgnitionSettings;
+
+	/*Spare12V1*/
+	Spare12V1.port_input = SPARE_12V_2_EN_GPIO_Port;
+	Spare12V1.port_diagnostic = SPARE_12V_2_DIAG_GPIO_Port;
+
+	Spare12V1.pin_input = SPARE_12V_2_EN_Pin;
+	Spare12V1.pin_diagnostic = SPARE_12V_2_DIAG_Pin;
+
+	Spare12V1.ADC_currentSense = &hadc2;
+	Spare12V1.ADC_channel = ADC_CHANNEL_10;
+	Spare12V1.mux_channel = 0;
+
+	Spare12V1.currentGain = 20;
+	Spare12V1.currentShunt = 0.033;
+
+	Spare12V1.settings = &Spare12VSettings;
+
+	/*Spare12V2*/
+	Spare12V2.port_input = SPARE_12V_3_EN_GPIO_Port;
+	Spare12V2.port_diagnostic = SPARE_12V_3_DIAG_GPIO_Port;
+
+	Spare12V2.pin_input = SPARE_12V_3_EN_Pin;
+	Spare12V2.pin_diagnostic = SPARE_12V_3_DIAG_Pin;
+
+	Spare12V2.ADC_currentSense = &hadc2;
+	Spare12V2.ADC_channel = ADC_CHANNEL_10;
+	Spare12V2.mux_channel = 3;
+
+	Spare12V2.currentGain = 20;
+	Spare12V2.currentShunt = 0.165;
+
+	Spare12V2.settings = &Spare12VSettings;
+
+	/*Radio fuses*/
+	Radio.port_input = RADIO_EFUSE_EN_GPIO_Port;
+	Radio.port_diagnostic = RADIO_EFUSE_DIAG_GPIO_Port;
+
+	Radio.pin_input = RADIO_EFUSE_EN_Pin;
+	Radio.pin_diagnostic = RADIO_EFUSE_DIAG_Pin;
+
+	Radio.settings = &RadioSettings;
+
+	/*5V fuses*/
+	/*Telemetry/Display*/
+	TelemetryDisplay.port_input = TELEMETRY_DISPLAY_EN_GPIO_Port;
+	TelemetryDisplay.port_diagnostic = TELEMETRY_DISPLAY_DIAG_GPIO_Port;
+
+	TelemetryDisplay.pin_input = TELEMETRY_DISPLAY_EN_Pin;
+	TelemetryDisplay.pin_diagnostic = TELEMETRY_DISPLAY_DIAG_Pin;
+
+	/*TireTempPress*/
+	TireTempPress.port_input = TIRE_TEMP_PRESS_EN_GPIO_Port;
+	TireTempPress.port_diagnostic = TIRE_TEMP_PRESS_DIAG_GPIO_Port;
+
+	TireTempPress.pin_input = TIRE_TEMP_PRESS_EN_Pin;
+	TireTempPress.pin_diagnostic = TIRE_TEMP_PRESS_DIAG_Pin;
+
+	/*BrakePressure*/
+	BrakePressure.port_input = BRAKE_PRESSURE_EN_GPIO_Port;
+	BrakePressure.port_diagnostic = BRAKE_PRESSURE_DIAG_GPIO_Port;
+
+	BrakePressure.pin_input = BRAKE_PRESSURE_EN_Pin;
+	BrakePressure.pin_diagnostic = BRAKE_PRESSURE_DIAG_Pin;
+
+	/*BrakeLight*/
+	BrakeLight.port_input = BRAKE_LIGHT_EN_GPIO_Port;
+	BrakeLight.port_diagnostic = BRAKE_LIGHT_DIAG_GPIO_Port;
+
+	BrakeLight.pin_input = BRAKE_LIGHT_EN_Pin;
+	BrakeLight.pin_diagnostic = BRAKE_LIGHT_DIAG_Pin;
+
+	/*Engine Sensor*/
+	EngineSensor.port_input = ENGINE_SENSOR_EN_GPIO_Port;
+	EngineSensor.port_diagnostic = ENGINE_SENSOR_DIAG_GPIO_Port;
+
+	EngineSensor.pin_input = ENGINE_SENSOR_EN_Pin;
+	EngineSensor.pin_diagnostic = ENGINE_SENSOR_DIAG_Pin;
+
+	/*Potentiometer*/
+	Potentiometer.port_input = POTENTIOMETER_EN_GPIO_Port;
+	Potentiometer.port_diagnostic = POTENTIOMETER_DIAG_GPIO_Port;
+
+	Potentiometer.pin_input = POTENTIOMETER_EN_Pin;
+	Potentiometer.pin_diagnostic = POTENTIOMETER_DIAG_Pin;
+
+	/*Spare 5V 1*/
+	Spare5V1.port_input = SPARE_5V_1_EN_GPIO_Port;
+	Spare5V1.port_diagnostic = SPARE_5V_1_DIAG_GPIO_Port;
+
+	Spare5V1.pin_input = SPARE_5V_1_EN_Pin;
+	Spare5V1.pin_diagnostic = SPARE_5V_1_DIAG_Pin;
+
+	/*Spare 5V 2*/
+	Spare5V2.port_input = SPARE_5V_2_EN_GPIO_Port;
+	Spare5V2.port_diagnostic = SPARE_5V_2_DIAG_GPIO_Port;
+
+	Spare5V2.pin_input = SPARE_5V_2_EN_Pin;
+	Spare5V2.pin_diagnostic = SPARE_5V_2_DIAG_Pin;
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -660,12 +1202,97 @@ static void MX_GPIO_Init(void)
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
+	int state = 0;
+	for(int i = 0; i < 4; i++)
+	{
+		Fuse12VPWM_SetTripTime(PWMedFuses[i], ms_200);
+		Fuse12VPWM_SetCurrentLimit(PWMedFuses[i], A_2_5);
+		Fuse12VPWM_SetInputFrequency(PWMedFuses[i], 500);
+		Fuse12VPWM_SetInputDutyCycle(PWMedFuses[i], 1);
+		Fuse12VPWM_StartPWM(PWMedFuses[i]);
+	}
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+  	state = !state;
+  	HighPoweredFuse_SetEnable(&SpareHP, state);
+  	RadioFuse_SetEnable(&Radio, state);
+  	RadioFuse_SetCurrentLimit(&Radio, A_2_5);
+  	RadioFuse_SetTripTime(&Radio, ms_200);
+
+  	for(int i = 0; i < 10; i++)
+  	{
+  		Fuse12V_SetTripTime(Fuses12V[i], ms_200);
+  		Fuse12V_SetCurrentLimit(Fuses12V[i], A_2_5);
+  		Fuse12V_SetEnable(Fuses12V[i], 0);
+  	}
+
+  	for (int i = 0; i < 7; i++)
+  	{
+  		LowPowerFuse_SetEnable(LowPowerFuses[i], state);
+  	}
+    osDelay(500);
   }
   /* USER CODE END 5 */
+}
+
+/* USER CODE BEGIN Header_StartSamplingTask */
+/**
+* @brief Function implementing the samplingTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartSamplingTask */
+void StartSamplingTask(void *argument)
+{
+  /* USER CODE BEGIN StartSamplingTask */
+  /* Infinite loop */
+  for(;;)
+  {
+  	float data[37] = {0};
+  	int index = 0;
+
+  	data[index] = HighPoweredFuse_GetSenseData(&SpareHP);
+  	index++;
+
+  	data[index] = (float)RadioFuse_GetDiagnostic(&Radio);
+  	index++;
+
+  	for(int i = 0; i < 4; i++)
+  	{
+  		data[index] = Fuse12VPWM_GetCurrentSense(PWMedFuses[i]);
+  		index++;
+  		data[index] = (float)Fuse12VPWM_IsFault(PWMedFuses[i]);
+  		index++;
+  	}
+
+  	for(int i = 0; i < 10; i++)
+  	{
+  		data[index] = Fuse12V_GetCurrentSense(Fuses12V[i]);
+			index++;
+  		data[index] = (float)Fuse12V_GetDiagnostic(Fuses12V[i]);
+  		index++;
+  	}
+
+  	for(int i = 0; i < 7; i++)
+  	{
+  		data[index] = (float)LowPowerFuse_GetDiagnostic(LowPowerFuses[i]);
+  		index++;
+  	}
+
+  	char msg[512] = {'\0'};
+		for (int i = 0; i < 37; i++)
+		{
+			char buffer[24] = {'\0'};
+			snprintf(buffer, sizeof(buffer), "Sample: %d : %2.3f\n\0", i, data[i]);
+			strncat(msg, buffer, strlen(buffer));
+		}
+		printf(msg);
+
+
+    osDelay(1000);
+  }
+  /* USER CODE END StartSamplingTask */
 }
 
 /**

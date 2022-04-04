@@ -39,6 +39,6 @@ typedef struct
 
 }Fuse12VSettings;
 
-void Fuse12VSettings_SetCurrentLimit(Fuse12VSettings settings, CurrentLimit limit);
-void Fuse12VSettings_SetTripTime(Fuse12VSettings settings, Delay delay);
+void Fuse12VSettings_SetCurrentLimit(Fuse12VSettings *settings, CurrentLimit limit);
+void Fuse12VSettings_SetTripTime(Fuse12VSettings *settings, Delay delay);
 #endif /* INC_FUSE12VSETTINGS_H_ */

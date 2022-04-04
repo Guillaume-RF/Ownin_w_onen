@@ -29,13 +29,16 @@ typedef struct
 	uint16_t currentGain;
 	uint16_t currentShunt;
 
-	Fuse12VSettings settings;
+	Fuse12VSettings *settings;
 }Fuse12V_PWM;
 
 void Fuse12VPWM_SetTripTime(Fuse12V_PWM *fuse, Delay delay);
+float Fuse12VPWM_GetCurrentSense(Fuse12V_PWM *fuse);
 void Fuse12VPWM_SetCurrentLimit(Fuse12V_PWM *fuse, CurrentLimit limit);
 void Fuse12VPWM_SetInputFrequency(Fuse12V_PWM *fuse, uint16_t frequency);
 void Fuse12VPWM_SetInputDutyCycle(Fuse12V_PWM *fuse, float dutyCycle);
+void Fuse12VPWM_StartPWM(Fuse12V_PWM *fuse);
+void Fuse12VPWM_StopPWM(Fuse12V_PWM *fuse);
 uint8_t Fuse12VPWM_IsFault(Fuse12V_PWM *fuse);
 
 #endif /* INC_FUSE12VPWM_H_ */

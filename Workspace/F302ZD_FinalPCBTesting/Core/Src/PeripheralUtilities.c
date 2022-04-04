@@ -51,10 +51,25 @@ void TIM_SetPWMDutyCycle(TIM_HandleTypeDef *htim, uint32_t channel, float dutyCy
 
 void Delay_us(uint16_t us)
 {
+	/*
+	TIM_HandleTypeDef test = TIM4_delay;
 	__HAL_TIM_SET_COUNTER(&TIM4_delay, 0);
 	HAL_TIM_Base_Start(&TIM4_delay);
-	while (__HAL_TIM_GET_COUNTER(&TIM4_delay) < us);
+	while (__HAL_TIM_GET_COUNTER(&TIM4_delay) < us)
+	{
+		int test2 = 0;
+	}
 	HAL_TIM_Base_Stop(&TIM4_delay);
+	return;
+	*/
+	TIM_HandleTypeDef test = htim4;
+	__HAL_TIM_SET_COUNTER(&htim4, 0);
+	HAL_TIM_Base_Start(&htim4);
+	while (__HAL_TIM_GET_COUNTER(&htim4) < us)
+	{
+		int test2 = 0;
+	}
+	HAL_TIM_Base_Stop(&htim4);
 	return;
 }
 

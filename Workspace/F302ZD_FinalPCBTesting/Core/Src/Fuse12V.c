@@ -48,4 +48,9 @@ float Fuse12V_GetCurrentSense(Fuse12V *fuse)
 	return current;
 }
 
+GPIO_PinState Fuse12V_GetDiagnostic(Fuse12V *fuse)
+{
+	return HAL_GPIO_ReadPin(fuse->port_diagnostic, fuse->pin_diagnostic);
+}
+
 

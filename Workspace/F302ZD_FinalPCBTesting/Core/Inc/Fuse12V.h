@@ -25,13 +25,14 @@ typedef struct
 	uint16_t currentGain;
 	uint16_t currentShunt;
 
-	Fuse12VSettings settings;
+	Fuse12VSettings *settings;
 }Fuse12V;
 
 void Fuse12V_SetTripTime(Fuse12V *fuse, Delay delay);
 void Fuse12V_SetCurrentLimit(Fuse12V *fuse, CurrentLimit limit);
 void Fuse12V_SetEnable (Fuse12V *fuse, GPIO_PinState state);
 float Fuse12V_GetCurrentSense(Fuse12V *fuse);
+GPIO_PinState Fuse12V_GetDiagnostic(Fuse12V *fuse);
 
 
 #endif /* INC_FUSE12V_H_ */

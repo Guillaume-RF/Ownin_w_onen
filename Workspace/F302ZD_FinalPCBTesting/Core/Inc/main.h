@@ -56,7 +56,7 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+TIM_HandleTypeDef htim4;
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
@@ -236,10 +236,10 @@ void Error_Handler(void);
 #define NTWS_EFUSE_EN_GPIO_Port GPIOG
 #define NTWS_EFUSE_DIAG_Pin GPIO_PIN_11
 #define NTWS_EFUSE_DIAG_GPIO_Port GPIOG
-#define NTWS02_DLY_0_Pin GPIO_PIN_12
-#define NTWS02_DLY_0_GPIO_Port GPIOG
-#define NTWS02_DLY_1_Pin GPIO_PIN_13
-#define NTWS02_DLY_1_GPIO_Port GPIOG
+#define NTWSO2_DLY_0_Pin GPIO_PIN_12
+#define NTWSO2_DLY_0_GPIO_Port GPIOG
+#define NTWSO2_DLY_1_Pin GPIO_PIN_13
+#define NTWSO2_DLY_1_GPIO_Port GPIOG
 #define SPARE_12V_1_DIAG_SEL_1_Pin GPIO_PIN_14
 #define SPARE_12V_1_DIAG_SEL_1_GPIO_Port GPIOG
 #define SPARE_12V_1_DIAG_SEL_0_Pin GPIO_PIN_15
