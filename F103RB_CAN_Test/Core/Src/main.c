@@ -119,15 +119,15 @@ int main(void)
 //  canFilterConfig.SlaveStartFilterBank = 20;
 
   canFilterConfig.FilterActivation = CAN_FILTER_ENABLE;
-      canFilterConfig.FilterBank = 14;
-      canFilterConfig.FilterFIFOAssignment = CAN_FILTER_FIFO0;
-      canFilterConfig.FilterIdHigh = 0;
-      canFilterConfig.FilterIdLow = 0x0000;
-      canFilterConfig.FilterMaskIdHigh = 0x0000;
-      canFilterConfig.FilterMaskIdLow = 0x0000;
-      canFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
-      canFilterConfig.FilterScale = CAN_FILTERSCALE_32BIT;
-      canFilterConfig.SlaveStartFilterBank = 0;
+  canFilterConfig.FilterBank = 10;
+  canFilterConfig.FilterFIFOAssignment = CAN_FILTER_FIFO0;
+  canFilterConfig.FilterIdHigh = 0;
+  canFilterConfig.FilterIdLow = 0x0000;
+  canFilterConfig.FilterMaskIdHigh = 0x0000;
+  canFilterConfig.FilterMaskIdLow = 0x0000;
+  canFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
+  canFilterConfig.FilterScale = CAN_FILTERSCALE_32BIT;
+  canFilterConfig.SlaveStartFilterBank = 0;
 
   //Configuring CAN filter for CAN1
   HAL_CAN_ConfigFilter(&hcan, &canFilterConfig);
@@ -137,18 +137,18 @@ int main(void)
   HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
 
   TxHeader.DLC = 1; //message size of two bytes
-    TxHeader.ExtId = 0;
-    TxHeader.IDE = CAN_ID_STD; //use standard ID formats
-    TxHeader.RTR = CAN_RTR_DATA; //data type for transmit frame
-    TxHeader.StdId = 0x103; //ID of the transmitter
-    TxHeader.TransmitGlobalTime = DISABLE;
+	TxHeader.ExtId = 0;
+	TxHeader.IDE = CAN_ID_STD; //use standard ID formats
+	TxHeader.RTR = CAN_RTR_DATA; //data type for transmit frame
+	TxHeader.StdId = 0x103; //ID of the transmitter
+	TxHeader.TransmitGlobalTime = DISABLE;
 
     TxData[0] = 0xf3;
 
-  if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &canMailbox) != HAL_OK)
-  {
-	 Error_Handler ();
-  }
+//  if (HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &canMailbox) != HAL_OK)
+//  {
+//	 Error_Handler ();
+//  }
 
   /* USER CODE END 2 */
 
@@ -228,7 +228,7 @@ static void MX_CAN_Init(void)
   /* USER CODE END CAN_Init 1 */
   hcan.Instance = CAN1;
   hcan.Init.Prescaler = 2;
-  hcan.Init.Mode = CAN_MODE_NORMAL;
+  hcan.Init.Mode = CAN_MODE_LOOPBACK;
   hcan.Init.SyncJumpWidth = CAN_SJW_1TQ;
   hcan.Init.TimeSeg1 = CAN_BS1_4TQ;
   hcan.Init.TimeSeg2 = CAN_BS2_3TQ;

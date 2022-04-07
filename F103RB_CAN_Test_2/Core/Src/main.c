@@ -42,14 +42,16 @@
 /* Private variables ---------------------------------------------------------*/
 CAN_HandleTypeDef hcan;
 
-/* USER CODE BEGIN PV */
+UART_HandleTypeDef huart2;
 
+/* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_USART2_UART_Init(void);
 static void MX_CAN_Init(void);
 /* USER CODE BEGIN PFP */
 
@@ -60,28 +62,17 @@ static void MX_CAN_Init(void);
 CAN_TxHeaderTypeDef TxHeader; //tx header
 CAN_RxHeaderTypeDef RxHeader; //rx header
 
-uint32_t canMailbox; //mailbox holder
-
-uint8_t TxData[8];  //tx bufer
-uint8_t RxData[8];  //rx buffer
-
+uint8_t TxData[8]; // = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}; //tx bufer
+uint8_t RxData[8]; // = {0,0,0,0,0,0,0,0}; //rx buffer
+uint32_t TxMailbox; //mailbox holder
 uint8_t count = 0;
-
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
 	count++;
-	HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData);
+//	HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData);
+//	HAL_GPIO_TogglePin(LD1_GPIO_Port, LD1_Pin);
 }
-
-//int _write(int32_t file, uint8_t *ptr, int32_t len)
-//{
-//	/* Implement your write code here, this is used by puts and printf for example */
-//	int i=0;
-//	for(i=0 ; i<len ; i++)
-//	ITM_SendChar((*ptr++));
-//	return len;
-//}
 /* USER CODE END 0 */
 
 /**
@@ -112,14 +103,15 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_USART2_UART_Init();
   MX_CAN_Init();
   /* USER CODE BEGIN 2 */
 
   HAL_CAN_Start(&hcan);
-  //inilitlize callback function
+
   HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
 
-  TxHeader.DLC = 8; //message size of 8 bytes
+  TxHeader.DLC = 1; //message size of two bytes
   TxHeader.ExtId = 0;
   TxHeader.IDE = CAN_ID_STD; //use standard ID formats
   TxHeader.RTR = CAN_RTR_DATA; //data type for transmit frame
@@ -127,24 +119,14 @@ int main(void)
   TxHeader.TransmitGlobalTime = DISABLE;
 
   TxData[0] = 0xf3;
-  TxData[1] = 69;
-  TxData[2] = 420;
-  TxData[3] = 'c';
-  TxData[4] = 'y';
-  TxData[5] = 'a';
-  TxData[6] = 'k';
-  TxData[7] = '\0';
 
-
-//  printf("test\n");
+  HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &TxMailbox);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &canMailbox);
-	HAL_Delay(2000);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -167,7 +149,9 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI_DIV2;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL16;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -176,12 +160,12 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
@@ -202,11 +186,11 @@ static void MX_CAN_Init(void)
   /* USER CODE BEGIN CAN_Init 1 */
 
   /* USER CODE END CAN_Init 1 */
-  hcan.Instance = CAN;
-  hcan.Init.Prescaler = 50;
-  hcan.Init.Mode = CAN_MODE_NORMAL;
+  hcan.Instance = CAN1;
+  hcan.Init.Prescaler = 16;
+  hcan.Init.Mode = CAN_MODE_LOOPBACK;
   hcan.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan.Init.TimeSeg1 = CAN_BS1_6TQ;
+  hcan.Init.TimeSeg1 = CAN_BS1_1TQ;
   hcan.Init.TimeSeg2 = CAN_BS2_1TQ;
   hcan.Init.TimeTriggeredMode = DISABLE;
   hcan.Init.AutoBusOff = DISABLE;
@@ -220,19 +204,53 @@ static void MX_CAN_Init(void)
   }
   /* USER CODE BEGIN CAN_Init 2 */
   CAN_FilterTypeDef canFilterConfig;  //can filter config
-  canFilterConfig.FilterActivation = CAN_FILTER_ENABLE;
-  canFilterConfig.FilterBank = 10;
-  canFilterConfig.FilterFIFOAssignment = CAN_FILTER_FIFO0;
-  canFilterConfig.FilterIdHigh = 0;
-  canFilterConfig.FilterIdLow = 0x00000;
-  canFilterConfig.FilterMaskIdHigh = 0;
-  canFilterConfig.FilterMaskIdLow = 0x0000;
-  canFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
-  canFilterConfig.FilterScale = CAN_FILTERSCALE_32BIT;
-  canFilterConfig.SlaveStartFilterBank = 0;
-  //Configuring CAN filter for CAN1
-  HAL_CAN_ConfigFilter(&hcan, &canFilterConfig);
+	canFilterConfig.FilterActivation = CAN_FILTER_ENABLE;
+	canFilterConfig.FilterBank = 10;
+	canFilterConfig.FilterFIFOAssignment = CAN_FILTER_FIFO0;
+	canFilterConfig.FilterIdHigh = 0;
+	canFilterConfig.FilterIdLow = 0x0000;
+	canFilterConfig.FilterMaskIdHigh = 0;
+	canFilterConfig.FilterMaskIdLow = 0x0000;
+	canFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
+	canFilterConfig.FilterScale = CAN_FILTERSCALE_32BIT;
+	canFilterConfig.SlaveStartFilterBank = 0;
+	//Configuring CAN filter for CAN1
+	HAL_CAN_ConfigFilter(&hcan, &canFilterConfig);
+
   /* USER CODE END CAN_Init 2 */
+
+}
+
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
 
 }
 
@@ -243,9 +261,33 @@ static void MX_CAN_Init(void)
   */
 static void MX_GPIO_Init(void)
 {
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : B1_Pin */
+  GPIO_InitStruct.Pin = B1_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : LD2_Pin */
+  GPIO_InitStruct.Pin = LD2_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 }
 
