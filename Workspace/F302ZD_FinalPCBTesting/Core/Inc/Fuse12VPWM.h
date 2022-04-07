@@ -10,9 +10,12 @@
 #include "main.h"
 #include "Fuse12V.h"
 #include "Fuse12VSettings.h"
+#include "cmsis_os.h"
 
 typedef struct
 {
+	uint8_t ID;
+
 	TIM_HandleTypeDef *TIM_input;
 	uint32_t TIM_channel;
 	float dutyCycle;
@@ -46,5 +49,6 @@ void Fuse12VPWM_SetInputDutyCycle(Fuse12V_PWM *fuse, float dutyCycle);
 void Fuse12VPWM_StartPWM(Fuse12V_PWM *fuse);
 void Fuse12VPWM_StopPWM(Fuse12V_PWM *fuse);
 uint8_t Fuse12VPWM_IsFault(Fuse12V_PWM *fuse);
-
+uint8_t Fuse12VPWM_IsEnabled(Fuse12V_PWM *fuse);
+uint8_t Fuse12VPWM_RetryProcedure(Fuse12V_PWM *fuse);
 #endif /* INC_FUSE12VPWM_H_ */

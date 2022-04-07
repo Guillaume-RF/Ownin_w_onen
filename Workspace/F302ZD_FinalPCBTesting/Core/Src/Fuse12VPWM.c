@@ -8,6 +8,15 @@
 #include "PeripheralUtilities.h"
 #include <stdio.h>
 
+uint8_t Fuse12VPWM_IsEnabled(Fuse12V_PWM *fuse)
+{
+	if(TIM_CHANNEL_STATE_GET(fuse->TIM_input, fuse->TIM_channel) == HAL_TIM_CHANNEL_STATE_READY)
+	{
+		return 0;
+	}
+	return 1;
+}
+
 void Fuse12VPWM_SetTripTime(Fuse12V_PWM *fuse, Delay delay)
 {
 	Fuse12VSettings_SetTripTime(fuse->settings, delay);
@@ -125,13 +134,13 @@ void Fuse12VPWM_RetryCallback(void * argument)
 uint8_t Fuse12VPWM_RetryProcedure(Fuse12V_PWM *fuse)
 {
 	Fuse12VPWM_StopPWM(fuse);
-	if ((HAL_GetTick() - fuse->time_ms_lastRetryProcedure) > 5000 || fuse->time_ms_lastRetryProcedure == 0)
+	if ((HAL_GetTick() - fuse->time_ms_lastRetryProcedure) > FUSE_CRITICAL_FAULT_PERIOD_MS || fuse->time_ms_lastRetryProcedure == 0)
 	{
 		fuse->retries = 0;
 		fuse->time_ms_lastRetryProcedure = HAL_GetTick();
 	}
 	fuse->retries++;
-	if (fuse->retries > 2)
+	if (fuse->retries > FUSE_RETRY_ATTEMPTS)
 	{
 		fuse->criticalFault = 1;
 		return 1;
@@ -142,7 +151,7 @@ uint8_t Fuse12VPWM_RetryProcedure(Fuse12V_PWM *fuse)
 		sprintf(name, "%lu", fuse->time_ms_lastRetryProcedure);
 		osTimerAttr_t attributes = {.name = name};
 		fuse->retryTimer = osTimerNew(Fuse12VPWM_RetryCallback, osTimerOnce, fuse, &attributes);
-		osTimerStart(fuse->retryTimer, 1000);
+		osTimerStart(fuse->retryTimer, FUSE_RESTART_WAIT_PERIOD_MS);
 		return 0;
 	}
 }

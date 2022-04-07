@@ -256,6 +256,9 @@ TIM_HandleTypeDef htim4;
 /* USER CODE BEGIN Private defines */
 #define ADC_VREF 3.3
 #define ADC_RES 4096
+#define FUSE_RESTART_WAIT_PERIOD_MS 1000
+#define FUSE_CRITICAL_FAULT_PERIOD_MS 5000
+#define FUSE_RETRY_ATTEMPTS 3
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

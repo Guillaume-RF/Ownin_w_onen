@@ -9,6 +9,11 @@
 #include <stdio.h>
 #include <string.h>
 
+uint8_t Fuse12V_IsEnabled(Fuse12V *fuse)
+{
+	return HAL_GPIO_ReadPin(fuse->port_input, fuse->pin_input);
+}
+
 void Fuse12V_SetTripTime(Fuse12V *fuse, Delay delay)
 {
 	Fuse12VSettings_SetTripTime(fuse->settings, delay);
@@ -50,7 +55,7 @@ float Fuse12V_GetCurrentSense(Fuse12V *fuse)
 	return current;
 }
 
-GPIO_PinState Fuse12V_GetDiagnostic(Fuse12V *fuse)
+GPIO_PinState Fuse12V_IsFault(Fuse12V *fuse)
 {
 	return HAL_GPIO_ReadPin(fuse->port_diagnostic, fuse->pin_diagnostic);
 }
@@ -66,13 +71,13 @@ void Fuse12V_RetryCallback(void * argument)
 uint8_t Fuse12V_RetryProcedure(Fuse12V *fuse)
 {
 	Fuse12V_SetEnable(fuse, 0);
-	if ((HAL_GetTick() - fuse->time_ms_lastRetryProcedure) > 5000 || fuse->time_ms_lastRetryProcedure == 0)
+	if ((HAL_GetTick() - fuse->time_ms_lastRetryProcedure) > FUSE_CRITICAL_FAULT_PERIOD_MS || fuse->time_ms_lastRetryProcedure == 0)
 	{
 		fuse->retries = 0;
 		fuse->time_ms_lastRetryProcedure = HAL_GetTick();
 	}
 	fuse->retries++;
-	if (fuse->retries > 2)
+	if (fuse->retries > FUSE_RETRY_ATTEMPTS)
 	{
 		fuse->criticalFault = 1;
 		return 1;
@@ -83,7 +88,7 @@ uint8_t Fuse12V_RetryProcedure(Fuse12V *fuse)
 		sprintf(name, "%lu", fuse->time_ms_lastRetryProcedure);
 		osTimerAttr_t attributes = {.name = name};
 		fuse->retryTimer = osTimerNew(Fuse12V_RetryCallback, osTimerOnce, fuse, &attributes);
-		osTimerStart(fuse->retryTimer, 1000);
+		osTimerStart(fuse->retryTimer, FUSE_RESTART_WAIT_PERIOD_MS);
 		return 0;
 	}
 }

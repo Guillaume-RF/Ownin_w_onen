@@ -6,6 +6,12 @@
  */
 #include "HighPoweredFuse.h"
 #include "PeripheralUtilities.h"
+#include <stdio.h>
+
+uint8_t HighPoweredFuse_IsEnabled(HighPoweredFuse *fuse)
+{
+	return HAL_GPIO_ReadPin(fuse->port_input, fuse->pin_input);
+}
 
 void HighPoweredFuse_SetEnable(HighPoweredFuse *fuse, GPIO_PinState state)
 {
@@ -49,6 +55,11 @@ void HighPoweredFuse_SetSenseSelect(HighPoweredFuse *fuse, HighPoweredFuse_Sense
 	}
 }
 
+uint8_t HighPoweredFuse_IsFault(HighPoweredFuse *fuse)
+{
+	return HighPoweredFuse_GetSenseData(fuse) < 0;
+}
+
 /*
  * Returns interpreted data from multi sense output. Returns -1.0 if in fault state.
  */
@@ -83,5 +94,38 @@ float HighPoweredFuse_GetSenseData(HighPoweredFuse *fuse)
 		//TODO: Interpret other types of raw readings.
 	}
 	return value;
+}
+
+void HighPoweredFuse_RetryCallback(void * argument)
+{
+	HighPoweredFuse *fuse=(HighPoweredFuse *)argument;
+	HighPoweredFuse_SetEnable(fuse, 1);
+	osTimerDelete(fuse->retryTimer);
+}
+
+//Begins retry procedure. Returns 1 if in critical fault, 0 otherwrise.
+uint8_t HighPoweredFuse_RetryProcedure(HighPoweredFuse *fuse)
+{
+	HighPoweredFuse_SetEnable(fuse, 0);
+	if ((HAL_GetTick() - fuse->time_ms_lastRetryProcedure) > FUSE_CRITICAL_FAULT_PERIOD_MS || fuse->time_ms_lastRetryProcedure == 0)
+	{
+		fuse->retries = 0;
+		fuse->time_ms_lastRetryProcedure = HAL_GetTick();
+	}
+	fuse->retries++;
+	if (fuse->retries > FUSE_RETRY_ATTEMPTS)
+	{
+		fuse->criticalFault = 1;
+		return 1;
+	}
+	else
+	{
+		char name[10];
+		sprintf(name, "%lu", fuse->time_ms_lastRetryProcedure);
+		osTimerAttr_t attributes = {.name = name};
+		fuse->retryTimer = osTimerNew(HighPoweredFuse_RetryCallback, osTimerOnce, fuse, &attributes);
+		osTimerStart(fuse->retryTimer, FUSE_RESTART_WAIT_PERIOD_MS);
+		return 0;
+	}
 }
 
