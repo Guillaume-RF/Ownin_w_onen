@@ -6,6 +6,7 @@
  */
 #include "Fuse12VPWM.h"
 #include "PeripheralUtilities.h"
+#include <stdio.h>
 
 void Fuse12VPWM_SetTripTime(Fuse12V_PWM *fuse, Delay delay)
 {
@@ -52,7 +53,6 @@ float Fuse12VPWM_GetCurrentSense(Fuse12V_PWM *fuse)
 {
 	ADC_SetChannel(fuse->ADC_currentSense, fuse->ADC_currentSenseChannel);
 	Mux_SetChannel(fuse->mux_currentSenseChannel);
-	HAL_ADC_Start(fuse->ADC_currentSense);
 	uint32_t raw = 0, maxRaw = 0, samples = 5;
 	float voltage = 0, current = 0;
 
@@ -63,6 +63,7 @@ float Fuse12VPWM_GetCurrentSense(Fuse12V_PWM *fuse)
 
 	for (int i = 0; i < samples; i++)
 	{
+		HAL_ADC_Start(fuse->ADC_currentSense);
 		if (HAL_ADC_PollForConversion(fuse->ADC_currentSense, 10) == HAL_OK)
 		{
 			raw = HAL_ADC_GetValue(fuse->ADC_currentSense);
@@ -74,7 +75,7 @@ float Fuse12VPWM_GetCurrentSense(Fuse12V_PWM *fuse)
 		}
 		else
 		{
-			return 0;
+			return -1.0;
 		}
 		Delay_us(200);
 	}
@@ -101,7 +102,7 @@ uint8_t Fuse12VPWM_IsFault(Fuse12V_PWM *fuse)
 	}
 	else
 	{
-		return 0;
+		return -1;
 	}
 
 	if (raw > (ADC_RES * 0.7) )
@@ -110,6 +111,38 @@ uint8_t Fuse12VPWM_IsFault(Fuse12V_PWM *fuse)
 	}
 	else
 	{
+		return 0;
+	}
+}
+
+void Fuse12VPWM_RetryCallback(void * argument)
+{
+	Fuse12V_PWM *fuse=(Fuse12V_PWM *)argument;
+	Fuse12VPWM_StartPWM(fuse);
+	osTimerDelete(fuse->retryTimer);
+}
+
+uint8_t Fuse12VPWM_RetryProcedure(Fuse12V_PWM *fuse)
+{
+	Fuse12VPWM_StopPWM(fuse);
+	if ((HAL_GetTick() - fuse->time_ms_lastRetryProcedure) > 5000 || fuse->time_ms_lastRetryProcedure == 0)
+	{
+		fuse->retries = 0;
+		fuse->time_ms_lastRetryProcedure = HAL_GetTick();
+	}
+	fuse->retries++;
+	if (fuse->retries > 2)
+	{
+		fuse->criticalFault = 1;
+		return 1;
+	}
+	else
+	{
+		char name[10];
+		sprintf(name, "%lu", fuse->time_ms_lastRetryProcedure);
+		osTimerAttr_t attributes = {.name = name};
+		fuse->retryTimer = osTimerNew(Fuse12VPWM_RetryCallback, osTimerOnce, fuse, &attributes);
+		osTimerStart(fuse->retryTimer, 1000);
 		return 0;
 	}
 }

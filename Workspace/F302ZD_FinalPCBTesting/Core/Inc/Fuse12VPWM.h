@@ -26,8 +26,14 @@ typedef struct
 	uint32_t ADC_currentSenseChannel;
 	uint8_t mux_currentSenseChannel;
 
+	uint32_t time_ms_lastRetryProcedure;
+	uint8_t retries;
+	uint8_t criticalFault;
+
+	osTimerId_t retryTimer;
+
 	uint16_t currentGain;
-	uint16_t currentShunt;
+	float currentShunt;
 
 	Fuse12VSettings *settings;
 }Fuse12V_PWM;

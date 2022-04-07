@@ -14,6 +14,6 @@ void LowPowerFuse_SetEnable (LowPowerFuse *fuse, LowPowerFuse_EN state)
 
 GPIO_PinState LowPowerFuse_GetDiagnostic (LowPowerFuse *fuse)
 {
-	return HAL_GPIO_ReadPin(fuse->port_diagnostic, fuse->pin_diagnostic);
+	return !HAL_GPIO_ReadPin(fuse->port_diagnostic, fuse->pin_diagnostic);
 }
 

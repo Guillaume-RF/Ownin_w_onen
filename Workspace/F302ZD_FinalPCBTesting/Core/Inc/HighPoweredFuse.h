@@ -34,7 +34,7 @@ typedef struct
 
 	HighPoweredFuse_Sense senseState;
 	uint16_t currentGain;
-	uint16_t currentShunt;
+	float currentShunt;
 }HighPoweredFuse;
 
 void HighPoweredFuse_SetEnable(HighPoweredFuse *fuse, GPIO_PinState state);

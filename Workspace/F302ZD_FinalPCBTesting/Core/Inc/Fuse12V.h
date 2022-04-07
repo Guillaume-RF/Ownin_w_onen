@@ -9,6 +9,7 @@
 #define INC_FUSE12V_H_
 #include "main.h"
 #include "Fuse12VSettings.h"
+#include "cmsis_os.h"
 
 typedef struct
 {
@@ -23,7 +24,13 @@ typedef struct
 	uint8_t mux_channel;
 
 	uint16_t currentGain;
-	uint16_t currentShunt;
+	float currentShunt;
+
+	uint32_t time_ms_lastRetryProcedure;
+	uint8_t retries;
+	uint8_t criticalFault;
+
+	osTimerId_t retryTimer;
 
 	Fuse12VSettings *settings;
 }Fuse12V;
@@ -33,6 +40,7 @@ void Fuse12V_SetCurrentLimit(Fuse12V *fuse, CurrentLimit limit);
 void Fuse12V_SetEnable (Fuse12V *fuse, GPIO_PinState state);
 float Fuse12V_GetCurrentSense(Fuse12V *fuse);
 GPIO_PinState Fuse12V_GetDiagnostic(Fuse12V *fuse);
+uint8_t Fuse12V_RetryProcedure(Fuse12V *fuse);
 
 
 #endif /* INC_FUSE12V_H_ */

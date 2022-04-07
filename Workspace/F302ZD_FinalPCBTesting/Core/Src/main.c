@@ -29,6 +29,8 @@
 #include "Fuse12VPWM.h"
 #include "LowPowerFuse.h"
 #include "RadioFuse.h"
+#include "VoltageSense.h"
+#include "CurrentSense.h"
 #include <stdio.h>
 #include <string.h>
 /* USER CODE END Includes */
@@ -70,7 +72,31 @@ const osThreadAttr_t samplingTask_attributes = {
   .stack_size = 1024 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
+/* Definitions for startupRoutineTask */
+osThreadId_t startupRoutineTaskHandle;
+const osThreadAttr_t startupRoutineTask_attributes = {
+  .name = "startupRoutineTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityAboveNormal,
+};
+/* Definitions for diagnosticCheckTask */
+osThreadId_t diagnosticCheckTaskHandle;
+const osThreadAttr_t diagnosticCheckTask_attributes = {
+  .name = "diagnosticCheckTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityBelowNormal,
+};
 /* USER CODE BEGIN PV */
+CAN_TxHeaderTypeDef TxHeader; //tx header
+CAN_RxHeaderTypeDef RxHeader; //rx header
+
+uint32_t canMailbox; //mailbox holder
+
+uint8_t TxData[24];  //tx bufer
+uint8_t RxData[8];  //rx buffer
+
+uint8_t count = 0;
+
 Fuse12VSettings Fan1Settings;
 Fuse12VSettings Fan2Settings;
 Fuse12VSettings ECUDAQSettings;
@@ -111,6 +137,11 @@ LowPowerFuse Potentiometer;
 LowPowerFuse Spare5V1;
 LowPowerFuse Spare5V2;
 
+VoltageSense VSense12V;
+
+CurrentSense CSense5V;
+CurrentSense CSense8V;
+
 HighPoweredFuse *HighPoweredFuses[2] = {&FuelPump, &SpareHP};
 Fuse12V_PWM *PWMedFuses[4] = {&Fan1, &Fan2, &WaterPump1, &WaterPump2};
 Fuse12V *Fuses12V[10] = {&ECU, &DAQ, &O2, &NTWS, &Dash, &Injection, &Ignition, &Starter, &Spare12V1, &Spare12V2};
@@ -128,6 +159,8 @@ static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
 void StartDefaultTask(void *argument);
 void StartSamplingTask(void *argument);
+void StartStartupRoutine(void *argument);
+void StartDiagnosticCheckTask(void *argument);
 
 /* USER CODE BEGIN PFP */
 void ConfigureMembers(void);
@@ -180,7 +213,39 @@ int main(void)
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   ConfigureMembers();
+  HAL_CAN_Start(&hcan);
+  HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
+  TxHeader.DLC = 8; //message size of 8 bytes
+	TxHeader.ExtId = 0;
+	TxHeader.IDE = CAN_ID_STD; //use standard ID formats
+	TxHeader.RTR = CAN_RTR_DATA; //data type for transmit frame
+	TxHeader.StdId = 0x103; //ID of the transmitter
+	TxHeader.TransmitGlobalTime = DISABLE;
 
+  /*
+  Fuse12V_SetEnable(&Spare12V1, 1);
+  while(1)
+  {
+  	float test = Fuse12V_GetCurrentSense(&Spare12V1);
+  	HAL_Delay(500);
+  }
+  */
+  /*
+  while(1)
+  {
+  	float test = VoltageSense_GetVoltage(&VSense12V);
+  	uint8_t test2 = 0;
+  }
+  */
+  /*
+  Mux_SetChannel(4);
+  HAL_ADC_Start(&hadc2);
+	if (HAL_ADC_PollForConversion(&hadc2, 10) == HAL_OK)
+	{
+		uint32_t test = HAL_ADC_GetValue(&hadc2);
+		HAL_ADC_Stop(&hadc2);
+	}
+	*/
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -208,6 +273,12 @@ int main(void)
 
   /* creation of samplingTask */
   samplingTaskHandle = osThreadNew(StartSamplingTask, NULL, &samplingTask_attributes);
+
+  /* creation of startupRoutineTask */
+  startupRoutineTaskHandle = osThreadNew(StartStartupRoutine, NULL, &startupRoutineTask_attributes);
+
+  /* creation of diagnosticCheckTask */
+  diagnosticCheckTaskHandle = osThreadNew(StartDiagnosticCheckTask, NULL, &diagnosticCheckTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -322,7 +393,7 @@ static void MX_ADC2_Init(void)
   sConfig.Channel = ADC_CHANNEL_9;
   sConfig.Rank = ADC_REGULAR_RANK_1;
   sConfig.SingleDiff = ADC_SINGLE_ENDED;
-  sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+  sConfig.SamplingTime = ADC_SAMPLETIME_181CYCLES_5;
   sConfig.OffsetNumber = ADC_OFFSET_NONE;
   sConfig.Offset = 0;
   if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
@@ -351,10 +422,10 @@ static void MX_CAN_Init(void)
 
   /* USER CODE END CAN_Init 1 */
   hcan.Instance = CAN;
-  hcan.Init.Prescaler = 16;
+  hcan.Init.Prescaler = 50;
   hcan.Init.Mode = CAN_MODE_NORMAL;
   hcan.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan.Init.TimeSeg1 = CAN_BS1_1TQ;
+  hcan.Init.TimeSeg1 = CAN_BS1_6TQ;
   hcan.Init.TimeSeg2 = CAN_BS2_1TQ;
   hcan.Init.TimeTriggeredMode = DISABLE;
   hcan.Init.AutoBusOff = DISABLE;
@@ -604,11 +675,17 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, BRAKE_LIGHT_EN_Pin|SPARE_5V_2_EN_Pin, GPIO_PIN_SET);
 
-  /*Configure GPIO pins : STARTER_BUTTON_Pin COOL_SWITCH_Pin MAX_COOL_SWITCH_Pin */
-  GPIO_InitStruct.Pin = STARTER_BUTTON_Pin|COOL_SWITCH_Pin|MAX_COOL_SWITCH_Pin;
+  /*Configure GPIO pins : STARTER_BUTTON_Pin MAX_COOL_SWITCH_Pin */
+  GPIO_InitStruct.Pin = STARTER_BUTTON_Pin|MAX_COOL_SWITCH_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : COOL_SWITCH_Pin */
+  GPIO_InitStruct.Pin = COOL_SWITCH_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(COOL_SWITCH_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : FAN_1_DLY_0_Pin IGNITION_DLY_1_Pin IGNITION_SET_0_Pin IGNITION_SET_1_Pin
                            STARTER_RELAY_EFUSE_EN_Pin FUEL_PUMP_DIAG_SEL_1_Pin FUEL_PUMP_DIAG_SEL_0_Pin FUEL_PUMP_FAULTRESET_Pin
@@ -745,6 +822,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI4_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI4_IRQn);
 
 }
 
@@ -904,6 +985,8 @@ void ConfigureMembers(void)
 	Fan1.currentGain = 20;
 	Fan1.currentShunt = 0.018;
 
+	Fan1.time_ms_lastRetryProcedure = 0;
+
 	Fan1.settings = &Fan1Settings;
 
 	/*Fan 2*/
@@ -922,6 +1005,8 @@ void ConfigureMembers(void)
 
 	Fan2.currentGain = 20;
 	Fan2.currentShunt = 0.018;
+
+	Fan2.time_ms_lastRetryProcedure = 0;
 
 	Fan2.settings = &Fan2Settings;
 
@@ -942,6 +1027,8 @@ void ConfigureMembers(void)
 	WaterPump1.currentGain = 20;
 	WaterPump1.currentShunt = 0.018;
 
+	WaterPump1.time_ms_lastRetryProcedure = 0;
+
 	WaterPump1.settings = &WaterPumpsSettings;
 
 	/*Water pump 2*/
@@ -957,6 +1044,8 @@ void ConfigureMembers(void)
 	WaterPump2.ADC_currentSense = &hadc2;
 	WaterPump2.ADC_currentSenseChannel = ADC_CHANNEL_9;
 	WaterPump2.mux_currentSenseChannel = 2;
+
+	WaterPump2.time_ms_lastRetryProcedure = 0;
 
 	WaterPump2.currentGain = 20;
 	WaterPump2.currentShunt = 0.018;
@@ -978,6 +1067,8 @@ void ConfigureMembers(void)
 	ECU.currentGain = 20;
 	ECU.currentShunt = 0.165;
 
+	ECU.time_ms_lastRetryProcedure = 0;
+
 	ECU.settings = &ECUDAQSettings;
 
 	/*DAQ*/
@@ -990,6 +1081,8 @@ void ConfigureMembers(void)
 	DAQ.ADC_currentSense = &hadc2;
 	DAQ.ADC_channel = ADC_CHANNEL_12;
 	DAQ.mux_channel = 6;
+
+	DAQ.time_ms_lastRetryProcedure = 0;
 
 	DAQ.currentGain = 20;
 	DAQ.currentShunt = 0.165;
@@ -1010,6 +1103,8 @@ void ConfigureMembers(void)
 	O2.currentGain = 20;
 	O2.currentShunt = 0.165;
 
+	O2.time_ms_lastRetryProcedure = 0;
+
 	O2.settings = &NTWSO2Settings;
 
 	/*NTWS*/
@@ -1025,6 +1120,8 @@ void ConfigureMembers(void)
 
 	NTWS.currentGain = 20;
 	NTWS.currentShunt = 0.165;
+
+	NTWS.time_ms_lastRetryProcedure = 0;
 
 	NTWS.settings = &NTWSO2Settings;
 
@@ -1042,6 +1139,8 @@ void ConfigureMembers(void)
 	Dash.currentGain = 20;
 	Dash.currentShunt = 0.033;
 
+	Dash.time_ms_lastRetryProcedure = 0;
+
 	Dash.settings = &InjectionDashSettings;
 
 	/*Injection*/
@@ -1057,6 +1156,8 @@ void ConfigureMembers(void)
 
 	Injection.currentGain = 20;
 	Injection.currentShunt = 0.033;
+
+	Injection.time_ms_lastRetryProcedure = 0;
 
 	Injection.settings = &InjectionDashSettings;
 
@@ -1074,6 +1175,8 @@ void ConfigureMembers(void)
 	Ignition.currentGain = 20;
 	Ignition.currentShunt = 0.165;
 
+	Ignition.time_ms_lastRetryProcedure = 0;
+
 	Ignition.settings = &StarterIgnitionSettings;
 
 	/*Starter*/
@@ -1089,6 +1192,8 @@ void ConfigureMembers(void)
 
 	Starter.currentGain = 20;
 	Starter.currentShunt = 0.165;
+
+	Starter.time_ms_lastRetryProcedure = 0;
 
 	Starter.settings = &StarterIgnitionSettings;
 
@@ -1106,6 +1211,8 @@ void ConfigureMembers(void)
 	Spare12V1.currentGain = 20;
 	Spare12V1.currentShunt = 0.033;
 
+	Spare12V1.time_ms_lastRetryProcedure = 0;
+
 	Spare12V1.settings = &Spare12VSettings;
 
 	/*Spare12V2*/
@@ -1118,6 +1225,8 @@ void ConfigureMembers(void)
 	Spare12V2.ADC_currentSense = &hadc2;
 	Spare12V2.ADC_channel = ADC_CHANNEL_10;
 	Spare12V2.mux_channel = 3;
+
+	Spare12V2.time_ms_lastRetryProcedure = 0;
 
 	Spare12V2.currentGain = 20;
 	Spare12V2.currentShunt = 0.165;
@@ -1189,6 +1298,54 @@ void ConfigureMembers(void)
 
 	Spare5V2.pin_input = SPARE_5V_2_EN_Pin;
 	Spare5V2.pin_diagnostic = SPARE_5V_2_DIAG_Pin;
+
+	/*Battery voltage sense*/
+	VSense12V.ADC_voltageSense = &hadc2;
+	VSense12V.ADC_channel = ADC_CHANNEL_10;
+	VSense12V.mux_channel = 4;
+
+	VSense12V.voltageDivision = 4.54;
+
+	/*Current sense*/
+	/*5V regulator*/
+	CSense5V.ADC_currentSense = &hadc2;
+	CSense5V.ADC_channel = ADC_CHANNEL_10;
+	CSense5V.mux_channel = 1;
+
+	CSense5V.currentGain = 20;
+	CSense5V.currentShunt = 0.055;
+
+	/*8V regulator*/
+	CSense8V.ADC_currentSense = &hadc2;
+	CSense8V.ADC_channel = ADC_CHANNEL_10;
+	CSense8V.mux_channel = 2;
+
+	CSense8V.currentGain = 20;
+	CSense8V.currentShunt = 0.055;
+}
+
+void StartupSelfTest(void)
+{
+
+}
+
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+	count++;
+	HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData);
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    if(GPIO_Pin == COOL_SWITCH_Pin) // If The INT Source Is EXTI Line9 (A9 Pin)
+    {
+    	float dutyCycle = Fan1.dutyCycle + 0.25;
+    	if(dutyCycle > 1)
+    	{
+    		dutyCycle = 0;
+    	}
+    	Fuse12VPWM_SetInputDutyCycle(&Fan1, dutyCycle);
+    }
 }
 /* USER CODE END 4 */
 
@@ -1202,20 +1359,24 @@ void ConfigureMembers(void)
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
-	int state = 0;
+	/*
+	int state = 1;
 	for(int i = 0; i < 4; i++)
 	{
 		Fuse12VPWM_SetTripTime(PWMedFuses[i], ms_200);
 		Fuse12VPWM_SetCurrentLimit(PWMedFuses[i], A_2_5);
 		Fuse12VPWM_SetInputFrequency(PWMedFuses[i], 500);
-		Fuse12VPWM_SetInputDutyCycle(PWMedFuses[i], 1);
+		Fuse12VPWM_SetInputDutyCycle(PWMedFuses[i], 0.5);
 		Fuse12VPWM_StartPWM(PWMedFuses[i]);
 	}
+	*/
   /* Infinite loop */
   for(;;)
   {
+  	/*
   	state = !state;
   	HighPoweredFuse_SetEnable(&SpareHP, state);
+  	HighPoweredFuse_SetEnable(&FuelPump, state);
   	RadioFuse_SetEnable(&Radio, state);
   	RadioFuse_SetCurrentLimit(&Radio, A_2_5);
   	RadioFuse_SetTripTime(&Radio, ms_200);
@@ -1224,13 +1385,14 @@ void StartDefaultTask(void *argument)
   	{
   		Fuse12V_SetTripTime(Fuses12V[i], ms_200);
   		Fuse12V_SetCurrentLimit(Fuses12V[i], A_2_5);
-  		Fuse12V_SetEnable(Fuses12V[i], 0);
+  		Fuse12V_SetEnable(Fuses12V[i], state);
   	}
 
-  	for (int i = 0; i < 7; i++)
+  	for (int i = 0; i < 8; i++)
   	{
   		LowPowerFuse_SetEnable(LowPowerFuses[i], state);
   	}
+  	*/
     osDelay(500);
   }
   /* USER CODE END 5 */
@@ -1249,10 +1411,44 @@ void StartSamplingTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
-  	float data[37] = {0};
+  	float FanCurrent = Fuse12VPWM_GetCurrentSense(&Fan1);
+  	float Regulator8VCurrent = CurrentSense_GetCurrent(&CSense8V);
+  	float SpareCurrent = Fuse12V_GetCurrentSense(&Injection);
+  	float BatteryVoltage = VoltageSense_GetVoltage(&VSense12V);
+  	float PumpCurrent = HighPoweredFuse_GetSenseData(&FuelPump);
+  	float Regulator5VCurrent = CurrentSense_GetCurrent(&CSense8V);
+
+  	snprintf(TxData, sizeof(TxData), "1 %2.2f\0", FanCurrent);
+  	HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &canMailbox);
+  	osDelay(500);
+
+  	snprintf(TxData, sizeof(TxData), "2 %2.2f\0", Regulator8VCurrent);
+		HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &canMailbox);
+		osDelay(500);
+
+		snprintf(TxData, sizeof(TxData), "3 %2.2f\0", SpareCurrent);
+		HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &canMailbox);
+		osDelay(500);
+
+		snprintf(TxData, sizeof(TxData), "4 %2.2f\0", BatteryVoltage);
+		HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &canMailbox);
+		osDelay(500);
+
+		snprintf(TxData, sizeof(TxData), "5 %2.2f\0", PumpCurrent);
+		HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &canMailbox);
+		osDelay(500);
+
+		snprintf(TxData, sizeof(TxData), "6 %2.2f\0", Regulator5VCurrent);
+		HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &canMailbox);
+		osDelay(500);
+  	/*
+  	float data[42] = {0};
   	int index = 0;
 
   	data[index] = HighPoweredFuse_GetSenseData(&SpareHP);
+  	index++;
+
+  	data[index] = HighPoweredFuse_GetSenseData(&FuelPump);
   	index++;
 
   	data[index] = (float)RadioFuse_GetDiagnostic(&Radio);
@@ -1274,25 +1470,124 @@ void StartSamplingTask(void *argument)
   		index++;
   	}
 
-  	for(int i = 0; i < 7; i++)
+  	for(int i = 0; i < 8; i++)
   	{
   		data[index] = (float)LowPowerFuse_GetDiagnostic(LowPowerFuses[i]);
   		index++;
   	}
 
-  	char msg[512] = {'\0'};
-		for (int i = 0; i < 37; i++)
+  	data[index] = VoltageSense_GetVoltage(&VSense12V);
+  	index++;
+
+  	data[index] = CurrentSense_GetCurrent(&CSense8V);
+  	index++;
+  	data[index] = CurrentSense_GetCurrent(&CSense8V);
+  	index++;
+
+
+  	char msg[1600] = {'\0'};
+		for (int i = 0; i < 42; i++)
 		{
 			char buffer[24] = {'\0'};
 			snprintf(buffer, sizeof(buffer), "Sample: %d : %2.3f\n\0", i, data[i]);
 			strncat(msg, buffer, strlen(buffer));
 		}
 		printf(msg);
-
-
-    osDelay(1000);
+	*/
   }
   /* USER CODE END StartSamplingTask */
+}
+
+/* USER CODE BEGIN Header_StartStartupRoutine */
+/**
+* @brief Function implementing the startupRoutineTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartStartupRoutine */
+void StartStartupRoutine(void *argument)
+{
+  /* USER CODE BEGIN StartStartupRoutine */
+  /* Infinite loop */
+  for(;;)
+  {
+  	Fuse12VPWM_SetTripTime(&Fan1, ms_200);
+		Fuse12VPWM_SetCurrentLimit(&Fan1, A_11_5);
+		Fuse12VPWM_SetInputFrequency(&Fan1, 500);
+		Fuse12VPWM_SetInputDutyCycle(&Fan1, 0.5);
+		Fuse12VPWM_StartPWM(&Fan1);
+    HAL_Delay(50);
+
+    RadioFuse_SetEnable(&Radio, 1);
+    RadioFuse_SetCurrentLimit(&Radio, A_2_5);
+    RadioFuse_SetTripTime(&Radio, ms_200);
+
+    LowPowerFuse_SetEnable(&BrakeLight, 1);
+
+    Fuse12V_SetEnable(&Injection, 1);
+    Fuse12V_SetCurrentLimit(&Injection, A_2_5);
+    Fuse12V_SetCurrentLimit(&Injection, ms_50);
+
+    HighPoweredFuse_SetEnable(&FuelPump, 1);
+    HighPoweredFuse_SetFaultRST(&FuelPump, 0);
+    osThreadSuspend(startupRoutineTaskHandle);
+  }
+  /* USER CODE END StartStartupRoutine */
+}
+
+/* USER CODE BEGIN Header_StartDiagnosticCheckTask */
+/**
+* @brief Function implementing the diagnosticCheckTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartDiagnosticCheckTask */
+void StartDiagnosticCheckTask(void *argument)
+{
+  /* USER CODE BEGIN StartDiagnosticCheckTask */
+  /* Infinite loop */
+  for(;;)
+  {
+  	if (HAL_GPIO_ReadPin(Injection.port_input, Injection.pin_input) == 1 && !Injection.criticalFault)
+		{
+			if(Fuse12V_GetDiagnostic(&Injection))
+			{
+				if(Fuse12V_RetryProcedure(&Injection))
+				{
+
+				}
+			}
+		}
+
+  	//TIM_HandleTypeDef test = *(Fan1.TIM_input);
+  	//int i = 0;
+  	/*
+  	if (Fan1.TIM_input->State == 1 && !Injection.criticalFault)
+  			{
+  				if(Fuse12V_GetDiagnostic(&Injection))
+  				{
+  					if(Fuse12V_RetryProcedure(&Injection))
+  					{
+
+  					}
+  				}
+  			}
+  	*/
+  	/*
+  	if (HAL_GPIO_ReadPin(Radio.port_input, Radio.pin_input) == 1 && !Radio.criticalFault)
+		{
+			if(Fuse12V_GetDiagnostic(&Ignition))
+			{
+				if(Fuse12V_RetryProcedure(&Ignition))
+				{
+
+				}
+			}
+		}
+		*/
+    osDelay(25);
+  }
+  /* USER CODE END StartDiagnosticCheckTask */
 }
 
 /**

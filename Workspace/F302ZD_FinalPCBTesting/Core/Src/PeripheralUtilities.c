@@ -11,6 +11,10 @@ void ADC_SetChannel (ADC_HandleTypeDef *adc, uint32_t channel)
 	ADC_ChannelConfTypeDef sConfig = {0};
 	sConfig.Channel = channel;
 	sConfig.Rank = ADC_REGULAR_RANK_1;
+	sConfig.SingleDiff = ADC_SINGLE_ENDED;
+	sConfig.SamplingTime = ADC_SAMPLETIME_181CYCLES_5;
+	sConfig.OffsetNumber = ADC_OFFSET_NONE;
+	sConfig.Offset = 0;
 	if (HAL_ADC_ConfigChannel(adc, &sConfig) != HAL_OK)
 	{
 		Error_Handler();
