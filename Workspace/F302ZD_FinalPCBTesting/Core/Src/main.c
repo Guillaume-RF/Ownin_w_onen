@@ -97,13 +97,19 @@ const osMutexAttr_t adc2Mutex_attributes = {
   .name = "adc2Mutex"
 };
 /* USER CODE BEGIN PV */
-CAN_TxHeaderTypeDef TxHeader; //tx header
+CAN_TxHeaderTypeDef TxHeader_Fault;
+CAN_TxHeaderTypeDef TxHeader_CriticalFault;
+CAN_TxHeaderTypeDef TxHeader_FuseCurrent;
+CAN_TxHeaderTypeDef TxHeader_RegCurrent;
+CAN_TxHeaderTypeDef TxHeader_BatVoltage;
+
 CAN_RxHeaderTypeDef RxHeader; //rx header
 
 uint32_t canMailbox; //mailbox holder
 
-uint8_t TxData[24];  //tx bufer
-uint8_t RxData[8];  //rx buffer
+uint8_t TxData_Faults[8];
+uint8_t TxData_Sense[8];
+uint8_t RxData[8];
 
 uint8_t count = 0;
 
@@ -226,12 +232,41 @@ int main(void)
   ConfigureMembers();
   HAL_CAN_Start(&hcan);
   HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING); //TODO: See if you can active notification on FIFO1 as well.
-  TxHeader.DLC = 8; //message size of 8 bytes
-	TxHeader.ExtId = 0;
-	TxHeader.IDE = CAN_ID_STD; //use standard ID formats
-	TxHeader.RTR = CAN_RTR_DATA; //data type for transmit frame
-	TxHeader.StdId = 0x103; //ID of the transmitter
-	TxHeader.TransmitGlobalTime = DISABLE;
+
+  TxHeader_Fault.DLC = 8;
+  TxHeader_Fault.ExtId = 0;
+  TxHeader_Fault.IDE = CAN_ID_STD;
+  TxHeader_Fault.RTR = CAN_RTR_DATA;
+  TxHeader_Fault.StdId = 0x103;
+  TxHeader_Fault.TransmitGlobalTime = DISABLE;
+
+  TxHeader_CriticalFault.DLC = 8;
+  TxHeader_CriticalFault.ExtId = 0;
+  TxHeader_CriticalFault.IDE = CAN_ID_STD;
+  TxHeader_CriticalFault.RTR = CAN_RTR_DATA;
+  TxHeader_CriticalFault.StdId = 0x104;
+  TxHeader_CriticalFault.TransmitGlobalTime = DISABLE;
+
+  TxHeader_FuseCurrent.DLC = 8;
+  TxHeader_FuseCurrent.ExtId = 0;
+  TxHeader_FuseCurrent.IDE = CAN_ID_STD;
+  TxHeader_FuseCurrent.RTR = CAN_RTR_DATA;
+  TxHeader_FuseCurrent.StdId = 0x105;
+  TxHeader_FuseCurrent.TransmitGlobalTime = DISABLE;
+
+  TxHeader_RegCurrent.DLC = 8;
+  TxHeader_RegCurrent.ExtId = 0;
+  TxHeader_RegCurrent.IDE = CAN_ID_STD;
+  TxHeader_RegCurrent.RTR = CAN_RTR_DATA;
+  TxHeader_RegCurrent.StdId = 0x106;
+  TxHeader_RegCurrent.TransmitGlobalTime = DISABLE;
+
+  TxHeader_BatVoltage.DLC = 8;
+  TxHeader_BatVoltage.ExtId = 0;
+  TxHeader_BatVoltage.IDE = CAN_ID_STD;
+  TxHeader_BatVoltage.RTR = CAN_RTR_DATA;
+  TxHeader_BatVoltage.StdId = 0x107;
+  TxHeader_BatVoltage.TransmitGlobalTime = DISABLE;
 	//Freeze watchdog when debugging.
 	__HAL_DBGMCU_FREEZE_IWDG();
   /* USER CODE END 2 */
@@ -1530,6 +1565,8 @@ void StartSamplingTask(void *argument)
   	for(int i = 0; i < Number_HPFuses; i++)
 		{
   		data = HighPoweredFuse_GetSenseData(HighPoweredFuses[i]);
+    	snprintf(TxData_Sense, sizeof(TxData_Sense), "%hhu %2.2f", HighPoweredFuses[i]->ID, data);
+    	HAL_CAN_AddTxMessage(&hcan, &TxHeader_FuseCurrent, TxData_Sense, &canMailbox);
   		//TODO: Send data over CAN.
 		}
 
@@ -1537,27 +1574,30 @@ void StartSamplingTask(void *argument)
   	for(int i = 0; i < Number_12VPWMFuses; i++)
 		{
   		data = Fuse12VPWM_GetCurrentSense(PWMedFuses[i]);
-  		//TODO: Send data over CAN.
+			snprintf(TxData_Sense, sizeof(TxData_Sense), "%hhu %2.2f", PWMedFuses[i]->ID, data);
+			HAL_CAN_AddTxMessage(&hcan, &TxHeader_FuseCurrent, TxData_Sense, &canMailbox);
 		}
 
   	for(int i = 0; i < Number_12VFuses; i++)
 		{
   		data = Fuse12V_GetCurrentSense(Fuses12V[i]);
-  		//TODO: Send data over CAN.
+			snprintf(TxData_Sense, sizeof(TxData_Sense), "%hhu %2.2f", Fuses12V[i]->ID, data);
+			HAL_CAN_AddTxMessage(&hcan, &TxHeader_FuseCurrent, TxData_Sense, &canMailbox);
 		}
   	osMutexRelease(adc2MutexHandle);
 
   	data = VoltageSense_GetVoltage(&VSense12V);
-  	//TODO: Send data over CAN.
+		snprintf(TxData_Sense, sizeof(TxData_Sense), "%2.2f", data);
+		HAL_CAN_AddTxMessage(&hcan, &TxHeader_BatVoltage, TxData_Sense, &canMailbox);
 
   	//data = CurrentSense_GetCurrent(&CSense8V); //8V eFuse goes into fault with any kind fo significant load.
   	//TODO: Send data over CAN.
 
   	data = CurrentSense_GetCurrent(&CSense5V);
-  	//TODO: Send data over CAN.
+		snprintf(TxData_Sense, sizeof(TxData_Sense), "5 %2.2f", data);
+		HAL_CAN_AddTxMessage(&hcan, &TxHeader_RegCurrent, TxData_Sense, &canMailbox);
 
   	/*
-
   	snprintf(TxData, sizeof(TxData), "1 %2.2f", FanCurrent);
   	HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &canMailbox);
   	osDelay(500);
@@ -1616,10 +1656,12 @@ void StartDiagnosticCheckTask(void *argument)
 			{
 				if(HighPoweredFuse_IsFault(HighPoweredFuses[i]))
 				{
-					//TODO: Send CAN message indicating fault.
+					TxData_Faults[0] = HighPoweredFuses[i]->ID;
+					HAL_CAN_AddTxMessage(&hcan, &TxHeader_Fault, TxData_Faults, &canMailbox);
 					if(HighPoweredFuse_RetryProcedure(HighPoweredFuses[i]))
 					{
-						//TODO:Send CAN message indicating critical fault.
+						TxData_Faults[0] = HighPoweredFuses[i]->ID;
+						HAL_CAN_AddTxMessage(&hcan, &TxHeader_CriticalFault, TxData_Faults, &canMailbox);
 					}
 				}
 			}
@@ -1631,10 +1673,12 @@ void StartDiagnosticCheckTask(void *argument)
 			{
 				if(Fuse12VPWM_IsFault(PWMedFuses[i]))
 				{
-					//TODO: Send CAN message indicating fault.
+					TxData_Faults[0] = PWMedFuses[i]->ID;
+					HAL_CAN_AddTxMessage(&hcan, &TxHeader_Fault, TxData_Faults, &canMailbox);
 					if(Fuse12VPWM_RetryProcedure(PWMedFuses[i]))
 					{
-						//TODO:Send CAN message indicating critical fault.
+						TxData_Faults[0] = PWMedFuses[i]->ID;
+						HAL_CAN_AddTxMessage(&hcan, &TxHeader_CriticalFault, TxData_Faults, &canMailbox);
 					}
 				}
 			}
@@ -1646,10 +1690,12 @@ void StartDiagnosticCheckTask(void *argument)
 			{
 				if(Fuse12V_IsFault(Fuses12V[i]))
 				{
-					//TODO: Send CAN message indicating fault.
+					TxData_Faults[0] = Fuses12V[i]->ID;
+					HAL_CAN_AddTxMessage(&hcan, &TxHeader_Fault, TxData_Faults, &canMailbox);
 					if(Fuse12V_RetryProcedure(Fuses12V[i]))
 					{
-						//TODO:Send CAN message indicating critical fault.
+						TxData_Faults[0] = Fuses12V[i]->ID;
+						HAL_CAN_AddTxMessage(&hcan, &TxHeader_CriticalFault, TxData_Faults, &canMailbox);
 					}
 				}
 			}
@@ -1661,10 +1707,12 @@ void StartDiagnosticCheckTask(void *argument)
 			{
 				if(LowPowerFuse_IsFault(LowPowerFuses[i]))
 				{
-					//TODO: Send CAN message indicating fault.
+					TxData_Faults[0] = LowPowerFuses[i]->ID;
+					HAL_CAN_AddTxMessage(&hcan, &TxHeader_Fault, TxData_Faults, &canMailbox);
 					if(LowPowerFuse_RetryProcedure(LowPowerFuses[i]))
 					{
-						//TODO:Send CAN message indicating critical fault.
+						TxData_Faults[0] = LowPowerFuses[i]->ID;
+						HAL_CAN_AddTxMessage(&hcan, &TxHeader_CriticalFault, TxData_Faults, &canMailbox);
 					}
 				}
 			}
@@ -1674,10 +1722,12 @@ void StartDiagnosticCheckTask(void *argument)
   	{
   		if(RadioFuse_IsFault(&Radio))
 			{
-				//TODO: Send CAN message indicating fault.
+				TxData_Faults[0] = LowPowerFuses[i]->ID;
+				HAL_CAN_AddTxMessage(&hcan, &TxHeader_Fault, TxData_Faults, &canMailbox);
 				if(RadioFuse_RetryProcedure(&Radio))
 				{
-					//TODO:Send CAN message indicating critical fault.
+					TxData_Faults[0] = LowPowerFuses[i]->ID;
+					HAL_CAN_AddTxMessage(&hcan, &TxHeader_CriticalFault, TxData_Faults, &canMailbox);
 				}
 			}
   	}
