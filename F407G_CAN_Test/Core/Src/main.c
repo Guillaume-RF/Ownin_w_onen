@@ -77,20 +77,44 @@ uint32_t canMailbox; //mailbox holder
 
 uint8_t TxData[8];  //tx bufer
 uint8_t RxData[8];  //rx buffer
+uint8_t dataBuffer[10][8]; //data buffer
+uint8_t faultBuffer[10][8];
 
 uint8_t count = 0;
+uint8_t faultBufferCount = 0;
+uint8_t dataSize = 8;
 
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
-	count++;
 	HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData);
-	printf("%s\n", RxData);
+
+	if(count == 10)
+	{
+		count = 0;
+	}
+	if(faultBufferCount == 10)
+	{
+		faultBufferCount = 0;
+	}
+	if(RxHeader.StdId >= 0x105)
+	{
+		memcpy(dataBuffer[count], &RxData, dataSize);
+		count++;
+	}
+	else
+	{
+		memcpy(faultBuffer[faultBufferCount], &RxData, dataSize);
+		faultBufferCount++;
+	}
+
+
+	//printf("%s\n", RxData);
 }
+
 
 int _write(int32_t file, uint8_t *ptr, int32_t len)
 {
-	/* Implement your write code here, this is used by puts and printf for example */
 	int i=0;
 	for(i=0 ; i<len ; i++)
 	ITM_SendChar((*ptr++));
@@ -153,7 +177,8 @@ int main(void)
   TxData[6] = 'k';
   TxData[7] = '\n';
 
-
+  int printCount = 0;
+  int faultPrintCount = 0;
 //  HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &canMailbox);
   /* USER CODE END 2 */
 
@@ -163,7 +188,24 @@ int main(void)
   {
 //	  HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &canMailbox);
 //	  HAL_Delay(2000);
-
+	if(printCount == 10)
+	{
+		printCount = 0;
+	}
+	if(faultPrintCount == 10)
+	{
+		faultPrintCount = 0;
+	}
+	if(printCount != count)
+	{
+		printf("%s\n", dataBuffer[printCount]);
+		printCount++;
+	}
+	if(faultPrintCount != faultBufferCount)
+	{
+		printf("Fault on fuse: %hu\n", faultBuffer[0]);
+		faultPrintCount++;
+	}
     /* USER CODE END WHILE */
     MX_USB_HOST_Process();
 
