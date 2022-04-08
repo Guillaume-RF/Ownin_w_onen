@@ -46,10 +46,10 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-#define Number_HPFuses sizeof HighPoweredFuses / sizeof *HighPoweredFuses
-#define Number_12VFuses sizeof PWMedFuses / sizeof *PWMedFuses
-#define Number_12VPWMFuses sizeof Fuses12V / sizeof *Fuses12V
-#define Number_LPFuses sizeof LowPowerFuses / sizeof *LowPowerFuses
+#define Number_HPFuses sizeof (HighPoweredFuses) / sizeof (*HighPoweredFuses)
+#define Number_12VFuses sizeof(Fuses12V) / sizeof (*Fuses12V)
+#define Number_12VPWMFuses sizeof (PWMedFuses) / sizeof (*PWMedFuses)
+#define Number_LPFuses sizeof (LowPowerFuses) / sizeof (*LowPowerFuses)
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -90,6 +90,11 @@ const osThreadAttr_t kickDogTask_attributes = {
   .name = "kickDogTask",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityRealtime7,
+};
+/* Definitions for adc2Mutex */
+osMutexId_t adc2MutexHandle;
+const osMutexAttr_t adc2Mutex_attributes = {
+  .name = "adc2Mutex"
 };
 /* USER CODE BEGIN PV */
 CAN_TxHeaderTypeDef TxHeader; //tx header
@@ -191,8 +196,6 @@ int _write(int32_t file, uint8_t *ptr, int32_t len)
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-	//Freeze watchdog when debugging.
-	__HAL_DBGMCU_FREEZE_IWDG();
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -229,35 +232,15 @@ int main(void)
 	TxHeader.RTR = CAN_RTR_DATA; //data type for transmit frame
 	TxHeader.StdId = 0x103; //ID of the transmitter
 	TxHeader.TransmitGlobalTime = DISABLE;
-
-  /*
-  Fuse12V_SetEnable(&Spare12V1, 1);
-  while(1)
-  {
-  	float test = Fuse12V_GetCurrentSense(&Spare12V1);
-  	HAL_Delay(500);
-  }
-  */
-  /*
-  while(1)
-  {
-  	float test = VoltageSense_GetVoltage(&VSense12V);
-  	uint8_t test2 = 0;
-  }
-  */
-  /*
-  Mux_SetChannel(4);
-  HAL_ADC_Start(&hadc2);
-	if (HAL_ADC_PollForConversion(&hadc2, 10) == HAL_OK)
-	{
-		uint32_t test = HAL_ADC_GetValue(&hadc2);
-		HAL_ADC_Stop(&hadc2);
-	}
-	*/
+	//Freeze watchdog when debugging.
+	__HAL_DBGMCU_FREEZE_IWDG();
   /* USER CODE END 2 */
 
   /* Init scheduler */
   osKernelInitialize();
+  /* Create the mutex(es) */
+  /* creation of adc2Mutex */
+  adc2MutexHandle = osMutexNew(&adc2Mutex_attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
@@ -351,7 +334,7 @@ void SystemClock_Config(void)
   }
   PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC12|RCC_PERIPHCLK_TIM2
                               |RCC_PERIPHCLK_TIM34;
-  PeriphClkInit.Adc12ClockSelection = RCC_ADC12PLLCLK_DIV1;
+  PeriphClkInit.Adc12ClockSelection = RCC_ADC12PLLCLK_DIV16;
   PeriphClkInit.Tim2ClockSelection = RCC_TIM2CLK_HCLK;
   PeriphClkInit.Tim34ClockSelection = RCC_TIM34CLK_HCLK;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
@@ -469,8 +452,8 @@ static void MX_IWDG_Init(void)
   /* USER CODE END IWDG_Init 1 */
   hiwdg.Instance = IWDG;
   hiwdg.Init.Prescaler = IWDG_PRESCALER_4;
-  hiwdg.Init.Window = 249;
-  hiwdg.Init.Reload = 2499;
+  hiwdg.Init.Window = 500;
+  hiwdg.Init.Reload = 2500;
   if (HAL_IWDG_Init(&hiwdg) != HAL_OK)
   {
     Error_Handler();
@@ -1471,17 +1454,17 @@ void StartStartupTask(void *argument)
   /* USER CODE BEGIN 5 */
 	/*Group 0*/
 	Fuse12VPWM_SetTripTime(&Fan1, ms_200);
-	Fuse12VPWM_SetCurrentLimit(&Fan1, A_11_5);
+	Fuse12VPWM_SetCurrentLimit(&Fan1, A_7);
 	Fuse12VPWM_SetInputFrequency(&Fan1, 500);
 	Fuse12VPWM_SetInputDutyCycle(&Fan1, 0.5);
 	Fuse12VPWM_StartPWM(&Fan1);
 
 	/*Group 1*/
-	Fuse12VPWM_SetTripTime(&Fan1, ms_200);
-	Fuse12VPWM_SetCurrentLimit(&Fan1, A_11_5);
-	Fuse12VPWM_SetInputFrequency(&Fan1, 500);
-	Fuse12VPWM_SetInputDutyCycle(&Fan1, 0.5);
-	Fuse12VPWM_StartPWM(&Fan1);
+	Fuse12VPWM_SetTripTime(&Fan2, ms_200);
+	Fuse12VPWM_SetCurrentLimit(&Fan2, A_11_5);
+	Fuse12VPWM_SetInputFrequency(&Fan2, 500);
+	Fuse12VPWM_SetInputDutyCycle(&Fan2, 0.5);
+	Fuse12VPWM_StartPWM(&Fan2);
 	HAL_Delay(150);
 
 	/*Group 2*/
@@ -1510,7 +1493,7 @@ void StartStartupTask(void *argument)
 
 	/*Group 5*/
 	RadioFuse_SetEnable(&Radio, 1);
-	RadioFuse_SetCurrentLimit(&Radio, A_2_5);
+	RadioFuse_SetCurrentLimit(&Radio, A_4);
 	RadioFuse_SetTripTime(&Radio, ms_200);
 
 	for(int i = 0; i < Number_12VFuses; i++)
@@ -1542,6 +1525,7 @@ void StartSamplingTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
+
   	float data;
   	for(int i = 0; i < Number_HPFuses; i++)
 		{
@@ -1549,6 +1533,7 @@ void StartSamplingTask(void *argument)
   		//TODO: Send data over CAN.
 		}
 
+  	osMutexAcquire(adc2MutexHandle, osWaitForever);
   	for(int i = 0; i < Number_12VPWMFuses; i++)
 		{
   		data = Fuse12VPWM_GetCurrentSense(PWMedFuses[i]);
@@ -1560,23 +1545,18 @@ void StartSamplingTask(void *argument)
   		data = Fuse12V_GetCurrentSense(Fuses12V[i]);
   		//TODO: Send data over CAN.
 		}
+  	osMutexRelease(adc2MutexHandle);
 
   	data = VoltageSense_GetVoltage(&VSense12V);
   	//TODO: Send data over CAN.
 
-  	data = CurrentSense_GetCurrent(&CSense8V);
+  	//data = CurrentSense_GetCurrent(&CSense8V); //8V eFuse goes into fault with any kind fo significant load.
   	//TODO: Send data over CAN.
 
   	data = CurrentSense_GetCurrent(&CSense5V);
   	//TODO: Send data over CAN.
 
   	/*
-  	float FanCurrent = Fuse12VPWM_GetCurrentSense(&Fan1);
-  	float Regulator8VCurrent = CurrentSense_GetCurrent(&CSense8V);
-  	float SpareCurrent = Fuse12V_GetCurrentSense(&Injection);
-  	float BatteryVoltage = VoltageSense_GetVoltage(&VSense12V);
-  	float PumpCurrent = HighPoweredFuse_GetSenseData(&FuelPump);
-  	float Regulator5VCurrent = CurrentSense_GetCurrent(&CSense8V);
 
   	snprintf(TxData, sizeof(TxData), "1 %2.2f", FanCurrent);
   	HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &canMailbox);
@@ -1602,49 +1582,6 @@ void StartSamplingTask(void *argument)
 		HAL_CAN_AddTxMessage(&hcan, &TxHeader, TxData, &canMailbox);
 		osDelay(500);
 
-  	float data[42] = {0};
-  	int index = 0;
-
-  	data[index] = HighPoweredFuse_GetSenseData(&SpareHP);
-  	index++;
-
-  	data[index] = HighPoweredFuse_GetSenseData(&FuelPump);
-  	index++;
-
-  	data[index] = (float)RadioFuse_GetDiagnostic(&Radio);
-  	index++;
-
-  	for(int i = 0; i < 4; i++)
-  	{
-  		data[index] = Fuse12VPWM_GetCurrentSense(PWMedFuses[i]);
-  		index++;
-  		data[index] = (float)Fuse12VPWM_IsFault(PWMedFuses[i]);
-  		index++;
-  	}
-
-  	for(int i = 0; i < 10; i++)
-  	{
-  		data[index] = Fuse12V_GetCurrentSense(Fuses12V[i]);
-			index++;
-  		data[index] = (float)Fuse12V_GetDiagnostic(Fuses12V[i]);
-  		index++;
-  	}
-
-  	for(int i = 0; i < 8; i++)
-  	{
-  		data[index] = (float)LowPowerFuse_GetDiagnostic(LowPowerFuses[i]);
-  		index++;
-  	}
-
-  	data[index] = VoltageSense_GetVoltage(&VSense12V);
-  	index++;
-
-  	data[index] = CurrentSense_GetCurrent(&CSense8V);
-  	index++;
-  	data[index] = CurrentSense_GetCurrent(&CSense8V);
-  	index++;
-
-
   	char msg[1600] = {'\0'};
 		for (int i = 0; i < 42; i++)
 		{
@@ -1654,6 +1591,7 @@ void StartSamplingTask(void *argument)
 		}
 		printf(msg);
   	*/
+  	osDelay(50);
   }
   /* USER CODE END StartSamplingTask */
 }
@@ -1671,7 +1609,7 @@ void StartDiagnosticCheckTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
-
+  	osMutexAcquire(adc2MutexHandle, osWaitForever);
   	for(int i = 0; i < Number_HPFuses; i++)
 		{
   		if(HighPoweredFuse_IsEnabled(HighPoweredFuses[i]) && !PWMedFuses[i]->criticalFault)
@@ -1689,7 +1627,7 @@ void StartDiagnosticCheckTask(void *argument)
 
   	for(int i = 0; i < Number_12VPWMFuses; i++)
 		{
-  		if(Fuse12VPWM_IsEnabled(PWMedFuses[i]) && !PWMedFuses[i]->criticalFault)
+  		if(Fuse12VPWM_IsEnabled(PWMedFuses[i]) && PWMedFuses[i]->dutyCycle > 0 && !PWMedFuses[i]->criticalFault)
 			{
 				if(Fuse12VPWM_IsFault(PWMedFuses[i]))
 				{
@@ -1743,8 +1681,8 @@ void StartDiagnosticCheckTask(void *argument)
 				}
 			}
   	}
-
-    osDelay(25);
+		osMutexRelease(adc2MutexHandle);
+    osDelay(20);
   }
   /* USER CODE END StartDiagnosticCheckTask */
 }
@@ -1762,8 +1700,8 @@ void StartKickDogTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
+  	osDelay(240);
   	HAL_IWDG_Refresh(&hiwdg);
-    osDelay(240);
   }
   /* USER CODE END StartKickDogTask */
 }

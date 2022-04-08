@@ -151,7 +151,7 @@ uint8_t Fuse12VPWM_RetryProcedure(Fuse12V_PWM *fuse)
 		sprintf(name, "%lu", fuse->time_ms_lastRetryProcedure);
 		osTimerAttr_t attributes = {.name = name};
 		fuse->retryTimer = osTimerNew(Fuse12VPWM_RetryCallback, osTimerOnce, fuse, &attributes);
-		osTimerStart(fuse->retryTimer, FUSE_RESTART_WAIT_PERIOD_MS);
+		osStatus_t test = osTimerStart(fuse->retryTimer, FUSE_RESTART_WAIT_PERIOD_MS);
 		return 0;
 	}
 }
