@@ -158,11 +158,18 @@ VoltageSense VSense12V;
 CurrentSense CSense5V;
 CurrentSense CSense8V;
 
+/*
 HighPoweredFuse *HighPoweredFuses[2] = {&FuelPump, &SpareHP};
 Fuse12V_PWM *PWMedFuses[4] = {&Fan1, &Fan2, &WaterPump1, &WaterPump2};
 Fuse12V *Fuses12V[10] = {&ECU, &DAQ, &O2, &NTWS, &Dash, &Injection, &Ignition, &Starter, &Spare12V1, &Spare12V2};
 LowPowerFuse *LowPowerFuses[8] = {&TelemetryDisplay, &TireTempPress, &BrakePressure, &BrakeLight, &EngineSensor, &Potentiometer,
 		&Spare5V1, &Spare5V2};
+*/
+
+HighPoweredFuse *HighPoweredFuses[1] = {&FuelPump};
+Fuse12V_PWM *PWMedFuses[1] = {&Fan1};
+Fuse12V *Fuses12V[1] = {&Injection};
+LowPowerFuse *LowPowerFuses[1] = {&BrakeLight};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -1495,14 +1502,17 @@ void StartStartupTask(void *argument)
 	Fuse12VPWM_StartPWM(&Fan1);
 
 	/*Group 1*/
+	/*
 	Fuse12VPWM_SetTripTime(&Fan2, ms_200);
 	Fuse12VPWM_SetCurrentLimit(&Fan2, A_11_5);
 	Fuse12VPWM_SetInputFrequency(&Fan2, 500);
 	Fuse12VPWM_SetInputDutyCycle(&Fan2, 0.5);
 	Fuse12VPWM_StartPWM(&Fan2);
 	HAL_Delay(150);
+	*/
 
 	/*Group 2*/
+	/*
 	Fuse12VPWM_SetTripTime(&WaterPump1, ms_200);
 	Fuse12VPWM_SetCurrentLimit(&WaterPump1, A_11_5);
 	Fuse12VPWM_SetInputFrequency(&WaterPump1, 500);
@@ -1515,6 +1525,7 @@ void StartStartupTask(void *argument)
 	Fuse12VPWM_SetInputDutyCycle(&WaterPump1, 0.5);
 	Fuse12VPWM_StartPWM(&WaterPump1);
 	HAL_Delay(150);
+	*/
 
 	/*Group 3*/
 	HighPoweredFuse_SetEnable(&FuelPump, 1);
@@ -1522,9 +1533,11 @@ void StartStartupTask(void *argument)
 	HAL_Delay(150);
 
 	/*Group 4*/
+	/*
 	HighPoweredFuse_SetEnable(&SpareHP, 1);
 	HighPoweredFuse_SetFaultRST(&SpareHP, 0);
 	HAL_Delay(150);
+	*/
 
 	/*Group 5*/
 	RadioFuse_SetEnable(&Radio, 1);
@@ -1565,7 +1578,8 @@ void StartSamplingTask(void *argument)
   	for(int i = 0; i < Number_HPFuses; i++)
 		{
   		data = HighPoweredFuse_GetSenseData(HighPoweredFuses[i]);
-    	snprintf(TxData_Sense, sizeof(TxData_Sense), "%hhu %2.2f", HighPoweredFuses[i]->ID, data);
+    	snprintf(TxData_Sense, sizeof(TxData_Sense), "%hu %2.2f", HighPoweredFuses[i]->ID, data);
+    	osDelay(15);
     	HAL_CAN_AddTxMessage(&hcan, &TxHeader_FuseCurrent, TxData_Sense, &canMailbox);
   		//TODO: Send data over CAN.
 		}
@@ -1574,20 +1588,24 @@ void StartSamplingTask(void *argument)
   	for(int i = 0; i < Number_12VPWMFuses; i++)
 		{
   		data = Fuse12VPWM_GetCurrentSense(PWMedFuses[i]);
-			snprintf(TxData_Sense, sizeof(TxData_Sense), "%hhu %2.2f", PWMedFuses[i]->ID, data);
+			snprintf(TxData_Sense, sizeof(TxData_Sense), "%hu %2.2f", PWMedFuses[i]->ID, data);
+			osDelay(15);
 			HAL_CAN_AddTxMessage(&hcan, &TxHeader_FuseCurrent, TxData_Sense, &canMailbox);
 		}
+  	osDelay(25);
 
   	for(int i = 0; i < Number_12VFuses; i++)
 		{
   		data = Fuse12V_GetCurrentSense(Fuses12V[i]);
-			snprintf(TxData_Sense, sizeof(TxData_Sense), "%hhu %2.2f", Fuses12V[i]->ID, data);
+			snprintf(TxData_Sense, sizeof(TxData_Sense), "%hu %2.2f", Fuses12V[i]->ID, data);
+			osDelay(15);
 			HAL_CAN_AddTxMessage(&hcan, &TxHeader_FuseCurrent, TxData_Sense, &canMailbox);
 		}
   	osMutexRelease(adc2MutexHandle);
 
   	data = VoltageSense_GetVoltage(&VSense12V);
 		snprintf(TxData_Sense, sizeof(TxData_Sense), "%2.2f", data);
+		osDelay(15);
 		HAL_CAN_AddTxMessage(&hcan, &TxHeader_BatVoltage, TxData_Sense, &canMailbox);
 
   	//data = CurrentSense_GetCurrent(&CSense8V); //8V eFuse goes into fault with any kind fo significant load.
@@ -1595,6 +1613,7 @@ void StartSamplingTask(void *argument)
 
   	data = CurrentSense_GetCurrent(&CSense5V);
 		snprintf(TxData_Sense, sizeof(TxData_Sense), "5 %2.2f", data);
+		osDelay(15);
 		HAL_CAN_AddTxMessage(&hcan, &TxHeader_RegCurrent, TxData_Sense, &canMailbox);
 
   	/*
@@ -1631,7 +1650,7 @@ void StartSamplingTask(void *argument)
 		}
 		printf(msg);
   	*/
-  	osDelay(50);
+  	osDelay(375);
   }
   /* USER CODE END StartSamplingTask */
 }
@@ -1722,11 +1741,11 @@ void StartDiagnosticCheckTask(void *argument)
   	{
   		if(RadioFuse_IsFault(&Radio))
 			{
-				TxData_Faults[0] = LowPowerFuses[i]->ID;
+				TxData_Faults[0] = Radio.ID;
 				HAL_CAN_AddTxMessage(&hcan, &TxHeader_Fault, TxData_Faults, &canMailbox);
 				if(RadioFuse_RetryProcedure(&Radio))
 				{
-					TxData_Faults[0] = LowPowerFuses[i]->ID;
+					TxData_Faults[0] = Radio.ID;
 					HAL_CAN_AddTxMessage(&hcan, &TxHeader_CriticalFault, TxData_Faults, &canMailbox);
 				}
 			}
